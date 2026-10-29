@@ -504,6 +504,148 @@ with sync_playwright() as p:
         m.screenshot(path=f"{OUT}/87-mobile-theme-ye.png")
         m.context.close()
 
+    if PART in ("all", "v5"):
+        # ---- 第二批：朗读、点词注释、平仄、默写、收藏/背诵打卡、分类、接龙、相关诗、打印选项、节令 ----
+        FAKE_TTS = """(() => {
+          const V = [{ name: 'Fake 普通话', lang: 'zh-CN', localService: true, default: true }, { name: 'Fake EN', lang: 'en-US', localService: true }];
+          window.__spoken = [];
+          class U { constructor(t) { this.text = t; } }
+          window.SpeechSynthesisUtterance = U;
+          const synth = { speaking: false, pending: false, getVoices: () => V, addEventListener() {}, cancel() { this.speaking = false; this._stop = true; },
+            speak(u) { this._stop = false; this.speaking = true; window.__spoken.push(u.text + '@' + u.rate); u.onstart && u.onstart();
+              const chars = Array.from(u.text); let i = 0;
+              const t = setInterval(() => { if (this._stop) { clearInterval(t); return; } if (i < chars.length) { u.onboundary && u.onboundary({ charIndex: i, name: 'word' }); i++; } else { clearInterval(t); this.speaking = false; u.onend && u.onend(); } }, 40); } };
+          Object.defineProperty(window, 'speechSynthesis', { value: synth, configurable: true });
+        })();"""
+        pg = new_page(b, 1600, 1000)
+        pg.add_init_script(FAKE_TTS)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 2200)
+        results["v5_study_buttons"] = pg.eval_on_selector_all(".study .st", "e => e.map(x => (x.hidden ? '(隐藏)' : '') + x.innerText)")
+        # 朗读：整首，逐字高亮
+        pg.click("#btnRead"); settle(pg, 400)
+        pg.screenshot(path=f"{OUT}/90-read-pop.png")
+        pg.click("[data-read-all]")
+        results["v5_read_highlight"] = pg.wait_for_function("() => { const e = document.querySelectorAll('#poemView .poem-body ruby.say .h'); return e.length ? [...e].map(x => x.textContent) : null; }", timeout=8000).json_value()
+        pg.screenshot(path=f"{OUT}/91-read-highlight.png")
+        pg.wait_for_function("() => window.__spoken.length >= 3", timeout=15000)
+        results["v5_spoken"] = pg.evaluate("window.__spoken.slice(0, 3)")
+        pg.click("#btnRead"); settle(pg, 300)
+        results["v5_read_stopped"] = [pg.inner_text("#btnRead"), pg.locator("#poemView ruby.say").count()]
+        # 点词看注释：有虚线的字 → 浮层里先显示释义
+        results["v5_ci_marked"] = pg.eval_on_selector_all("#poemView ruby.ci", "e => [...new Set(e.map(x => x.dataset.ci))]")
+        pg.click("#poemView ruby.ci >> nth=0"); settle(pg, 300)
+        results["v5_gloss"] = pg.inner_text("#pop .gloss") if pg.locator("#pop .gloss").count() else ""
+        pg.screenshot(path=f"{OUT}/92-gloss-pop.png"); pg.keyboard.press("Escape")
+        # 平仄
+        pg.click("#btnSettings"); settle(pg, 250); pg.check('[data-set="pingze"]'); settle(pg, 900); pg.keyboard.press("Escape"); settle(pg, 300)
+        results["v5_pingze"] = pg.eval_on_selector_all("#poemView .poem-body ruby .pz", "e => e.slice(0, 10).map(x => x.className.replace('pz pz-', ''))")
+        results["v5_pingze_tip"] = pg.inner_text("#cardTip")
+        pg.screenshot(path=f"{OUT}/93-pingze.png")
+        pg.click("#btnSettings"); settle(pg, 250); pg.uncheck('[data-set="pingze"]'); settle(pg, 600); pg.keyboard.press("Escape")
+        # 默写：挖空 → 选字 / 写字 → 计分
+        pg.click("#btnDictate"); settle(pg, 900)
+        nb = pg.locator("#poemView ruby.blank").count()
+        DAILY_FX = {d["t"]: d for d in json.load(open(os.path.join(SITE, "poem", "daily-poems.json"), encoding="utf-8"))["poems"]}
+        tt = pg.eval_on_selector_all(".poem-title > ruby .h", "e => e.map(x => x.textContent).join('')")
+        cur_title = next(t for t in DAILY_FX if t.startswith(tt))
+        results["v5_dict_blanks"] = nb
+        pg.screenshot(path=f"{OUT}/94-dictation.png")
+        for i in range(nb):
+            el = pg.locator("#poemView ruby.blank:not(.ok):not(.bad)").first
+            el.click(); settle(pg, 250)
+            if i == 0:
+                pg.screenshot(path=f"{OUT}/95-dictation-pop.png")
+                pg.click("#pop [data-dict-pick] >> nth=0")
+            else:
+                # 其余空格写正确的字（从课本数据里取原字）
+                k = pg.evaluate("document.getElementById('pop').dataset.k")
+                l, c = map(int, k.split(":"))
+                pg.fill("#pop [data-dict-type] input", list(DAILY_FX[cur_title]["lines"][l])[c])
+                pg.press("#pop [data-dict-type] input", "Enter")
+            settle(pg, 300)
+        results["v5_dict_result"] = pg.inner_text("#cardTip")
+        results["v5_dict_marks"] = [pg.locator("#poemView ruby.blank.ok").count(), pg.locator("#poemView ruby.blank.bad").count()]
+        pg.screenshot(path=f"{OUT}/96-dictation-score.png")
+        pg.click("#cardTip [data-dict-end]"); settle(pg, 500)
+        # 收藏、背会了 → 诗单
+        pg.click("#btnFav"); settle(pg, 300); pg.click("#btnRecited"); settle(pg, 300)
+        results["v5_fav_recite"] = [pg.inner_text("#btnFav"), pg.inner_text("#btnRecited"), pg.evaluate("Object.keys(JSON.parse(localStorage.getItem('yinshi:recite')))")]
+        # 两天后：该复习了（首页提示）
+        rec = pg.evaluate("localStorage.getItem('yinshi:recite')")
+        pg.evaluate("""() => { const r = JSON.parse(localStorage.getItem('yinshi:recite')); for (const k in r) r[k].next = '2020-01-01'; localStorage.setItem('yinshi:recite', JSON.stringify(r)); }""")
+        pg.reload(); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
+        results["v5_due_chip"] = pg.inner_text("#dueChip") if pg.locator("#dueChip").is_visible() else "(hidden)"
+        pg.screenshot(path=f"{OUT}/97-due-chip.png")
+        pg.click("#dueChip"); settle(pg, 600)
+        results["v5_mine"] = pg.inner_text("#browseBody")[:160]
+        pg.screenshot(path=f"{OUT}/98-browse-mine.png")
+        # 分类
+        pg.click('#browse [data-tab="cat"]'); settle(pg, 300); pg.click('[data-bsel="g:三年级"]'); settle(pg, 300)
+        results["v5_grade3"] = pg.eval_on_selector_all("#browseBody .res-t", "e => e.map(x => x.textContent)")
+        pg.screenshot(path=f"{OUT}/99-browse-grade.png")
+        pg.click('[data-bsel="t:思乡"]'); settle(pg, 300)
+        results["v5_theme_sixiang"] = pg.eval_on_selector_all("#browseBody .res-t", "e => e.map(x => x.textContent)")
+        pg.click("#browseBody .res >> nth=0"); settle(pg, 1500)
+        results["v5_browse_open"] = pg.inner_text(".poem-title").replace("\n", "")
+        # 相关的诗
+        results["v5_related"] = pg.eval_on_selector_all("#sideNote .rel button", "e => e.map(x => x.innerText.replace(/\\n/g, ' '))")
+        pg.screenshot(path=f"{OUT}/100-related.png")
+        if results["v5_related"]:
+            pg.click("#sideNote .rel button >> nth=0"); settle(pg, 1200)
+            results["v5_related_open"] = pg.inner_text(".poem-title").replace("\n", "")
+        # 接龙
+        pg.click("#btnBrowse"); settle(pg, 400); pg.click('#browse [data-tab="jl"]'); settle(pg, 300)
+        for _ in range(6):     # 开局那句可能接不上（本地没有、备用诗库在测试里是录好的数据）：再开一局
+            pg.click("[data-jl-start]"); settle(pg, 1500)
+            if pg.locator("[data-jl-pick]").count(): break
+        q = pg.inner_text("#browseBody .b-h >> nth=1")
+        ch = pg.evaluate("document.querySelector('#browseBody .b-h .zhu').textContent")
+        opts = pg.eval_on_selector_all("[data-jl-pick]", "e => e.map(x => x.textContent)")
+        good = next((i for i, o in enumerate(opts) if o.startswith(ch)), 0)
+        pg.click(f'[data-jl-pick="{good}"]'); settle(pg, 1200)
+        results["v5_jielong"] = [ch, opts, pg.inner_text("#browseBody .b-h >> nth=0")]
+        pg.screenshot(path=f"{OUT}/101-jielong.png")
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        # 打印 / 导出选项
+        pg.click("#btnPrint"); settle(pg, 300)
+        for k in ("yi", "ci", "shang", "big"):
+            if pg.locator(f'[data-popt="{k}"]:not([disabled])').count(): pg.check(f'[data-popt="{k}"]')
+        pg.uncheck('[data-popt="py"]')
+        pg.screenshot(path=f"{OUT}/102-print-options.png")
+        pg.evaluate("window.print = () => { window.__printed = [document.body.className, document.getElementById('printExtra').innerText.slice(0, 40)]; }")
+        pg.click("[data-do-print]"); settle(pg, 800)
+        results["v5_print"] = pg.evaluate("window.__printed")
+        pg.emulate_media(media="print"); settle(pg, 300)
+        pg.screenshot(path=f"{OUT}/103-print-with-notes.png", full_page=True)
+        pg.emulate_media(media="screen")
+        pg.click("#btnPrint"); settle(pg, 300)
+        with pg.expect_download() as dl: pg.click("[data-do-export]")
+        dl.value.save_as(f"{OUT}/104-export-with-notes.png"); settle(pg, 300)
+        pg.context.close()
+        # 没有中文语音：朗读按钮隐藏
+        pg = new_page(b, 1000, 800)
+        pg.add_init_script("Object.defineProperty(window, 'speechSynthesis', { value: { getVoices: () => [], addEventListener() {}, cancel() {} }, configurable: true }); window.SpeechSynthesisUtterance = function () {};")
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 2200)
+        results["v5_no_voice_hidden"] = pg.evaluate("document.getElementById('btnRead').hidden")
+        pg.context.close()
+        # 节令：清明、春节（农历）、霜降前后一天
+        for d, label in (("2027-04-05", "qingming"), ("2026-02-17", "chunjie"), ("2026-10-24", "shuangjiang")):
+            pg = new_page(b, 1000, 800)
+            pg.goto(BASE + "?date=" + d); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1200)
+            results["v5_season_" + label] = pg.inner_text(".poem-title").replace("\n", "") + " / " + pg.inner_text(".tagline")
+            pg.context.close()
+        # 手机：学习按钮、诗单、默写
+        m = new_page(b, 390, 844, mobile=True)
+        m.add_init_script(FAKE_TTS)
+        m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1600)
+        m.evaluate("document.querySelector('.study').scrollIntoView({block: 'center'})"); settle(m, 300)
+        m.screenshot(path=f"{OUT}/105-mobile-study.png")
+        m.tap("#btnRead"); settle(m, 500); m.screenshot(path=f"{OUT}/106-mobile-read-sheet.png"); m.keyboard.press("Escape")
+        m.tap("#btnBrowse"); settle(m, 600); m.tap('[data-bsel="t:春"]'); settle(m, 300)
+        m.screenshot(path=f"{OUT}/107-mobile-browse.png")
+        results["v5_mobile_browse"] = m.locator("#browseBody .res").count()
+        m.context.close()
+
     if PART in ("all", "visual"):
         # ---- 字体 · 长诗导出 · 竖排方向 · 字号 ----
         def setting(page, sel):

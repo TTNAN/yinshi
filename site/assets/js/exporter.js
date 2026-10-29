@@ -67,10 +67,10 @@ function safeScale(W, H) {
 }
 
 /** bg：自定义背景图（可选），铺在纸下面，再按主题的纸色半透明盖住 */
-export async function cardToPNG(liveCard, bg = null) {
+export async function cardToPNG(liveCard, bg = null, extras = []) {
   if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
   const card = stageClone(liveCard);
-  try { return await paint(card, bg); } finally { card.remove(); }
+  try { return await paint(card, bg, extras); } finally { card.remove(); }
 }
 
 // 主题颜色从 CSS 变量取（宣纸 / 素笺 / 夜读……导出与屏幕一致）
@@ -83,7 +83,20 @@ function themeColors() {
     seal: v("--seal-ink", "#fbf1ea"), ink3: v("--ink-3", "#7a6f62"), dark: cs.colorScheme === "dark" || document.documentElement.dataset.theme === "ye" };
 }
 
-async function paint(card, bg) {
+// 把一段文字按宽度折行（逐字，标点不放行首）
+function wrap(ctx, text, width) {
+  const out = []; let cur = "";
+  for (const ch of Array.from(text)) {
+    if (ctx.measureText(cur + ch).width > width && cur) {
+      if (/[，。、；：！？」』）]/.test(ch)) { cur += ch; out.push(cur); cur = ""; continue; }
+      out.push(cur); cur = ch;
+    } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+async function paint(card, bg, extras = []) {
   const poem = card.querySelector(".poem");
   const vertical = poem.classList.contains("m-v");
   const grid = poem.classList.contains("m-g");
@@ -95,7 +108,16 @@ async function paint(card, bg) {
     const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
     right = Math.max(right, r.right + 24); bottom = Math.max(bottom, r.bottom + 24);
   });
-  const W = Math.ceil(right - box.left), H = Math.ceil(bottom - box.top) + sigH;
+  const W = Math.ceil(right - box.left);
+  // 译文 / 注释 / 赏析（打印导出选项里勾了才有）：画在诗下面
+  const exFont = `15px ${getComputedStyle(card.querySelector(".poem")).getPropertyValue("--han").trim() || "serif"}`;
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = exFont;
+  const exW = Math.min(W - 96, 620);
+  const exBlocks = (extras || []).map((b) => ({ h: b.h, lines: wrap(measure, b.t, exW) }));
+  const exH = exBlocks.length ? 20 + exBlocks.reduce((n, b) => n + 30 + b.lines.length * 27, 0) : 0;
+  const polyBottom = Math.ceil(bottom - box.top);
+  const H = polyBottom + exH + sigH;
   const S = safeScale(W, H);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(W * S); canvas.height = Math.round(H * S);
@@ -190,6 +212,22 @@ async function paint(card, bg) {
       ctx.fillText(ch, X(rect) + rect.width / 2, Y(rect) + rect.height / 2);
     });
   });
+
+  if (exBlocks.length) {
+    let y = polyBottom + 10;
+    const x0 = (W - exW) / 2;
+    ctx.save(); ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.strokeStyle = TC.frame; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + exW, y); ctx.stroke();
+    y += 14;
+    const ink = getComputedStyle(document.documentElement).getPropertyValue("--ink-2").trim() || "#4a4239";
+    for (const b of exBlocks) {
+      ctx.fillStyle = TC.ink3; ctx.font = `12px ${getComputedStyle(document.body).fontFamily}`; ctx.fillText(b.h, x0, y); y += 24;
+      ctx.fillStyle = ink; ctx.font = exFont;
+      for (const l of b.lines) { ctx.fillText(l, x0, y); y += 27; }
+      y += 6;
+    }
+    ctx.restore();
+  }
 
   // 落款：小印 + 吟诗
   const sx = W - 40 - 26, sy = H - sigH - 6;

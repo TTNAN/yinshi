@@ -23,8 +23,11 @@ let seq = 0;
 function cellHTML(c) {
   const i = seq++;
   if (!c.han) return `<span class="pc" aria-hidden="${/\s/.test(c.ch)}"><span class="h">${esc(c.ch)}</span></span>`;
-  const cls = ["c", c.fix && !c.ov ? "fix" : "", c.ov ? "ov" : "", c.hl ? "hl" : ""].filter(Boolean).join(" ");
-  return `<ruby class="${cls}" data-k="${c.key}" tabindex="-1" style="--i:${i}"><span class="h">${esc(c.ch)}</span><rt>${esc(c.py)}</rt></ruby>`;
+  // ci：有注释的词（虚线下划线）；pz：平仄标注（平 / 仄 / 入）；blank：默写挖空（ok / bad：答对 / 答错）
+  const cls = ["c", c.fix && !c.ov ? "fix" : "", c.ov ? "ov" : "", c.hl ? "hl" : "", c.ci ? "ci" : "", c.blank ? "blank" : "", c.blank && c.ans ? (c.ans === c.ch ? "ok" : "bad") : "", c.say ? "say" : ""].filter(Boolean).join(" ");
+  const pz = c.pz ? `<i class="pz pz-${c.pz}" aria-hidden="true">${c.pz === "p" ? "—" : "|"}</i>` : "";
+  const shown = c.blank ? (c.ans || "\u3000") : c.ch;
+  return `<ruby class="${cls}" data-k="${c.key}"${c.ci ? ` data-ci="${esc(c.ci)}"` : ""} tabindex="-1" style="--i:${i}"><span class="h">${esc(shown)}</span><rt>${esc(c.py)}</rt>${pz}</ruby>`;
 }
 
 /**

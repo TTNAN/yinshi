@@ -418,6 +418,9 @@ export async function authorInfo(name, dynasty = "") {
   } catch { return null; }
 }
 
+/** 唐诗三百首全文（本站托管，不请求接口） */
+export const featuredPoems = () => cp.featuredPoems();
+
 /** 朝代 / 体裁 */
 export async function meta(kind) {
   if (kind === "types") return Object.keys(TYPES);

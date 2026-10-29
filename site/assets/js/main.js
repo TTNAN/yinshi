@@ -7,6 +7,7 @@ import { cardToPNG, download, poemToText, copyText } from "./exporter.js";
 import * as fonts from "./fonts.js";
 import * as zh from "./zh.js";
 import * as themes from "./themes.js";
+import * as study from "./study.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -34,12 +35,14 @@ const VQ = (() => { const v = new URL(import.meta.url).searchParams.get("v"); re
 const state = {
   poem: null, alt: null,
   view: { mode: store.get("mode", "h"), vdir: store.get("vdir", "rl") === "lr" ? "lr" : "rl", pinyin: store.get("pinyin", true), veil: false, veiled: new Set(), today: false, tag: "", hi: "" },
-  settings: Object.assign({ textbook: true, recite: false }, store.get("settings", {})),
+  settings: Object.assign({ textbook: true, recite: false, pingze: false }, store.get("settings", {})),
   display: Object.assign({}, DISPLAY_DEFAULT, store.get("display", {})),
   filters: Object.assign({ dynasty: "", types: [], author: "" }, store.get("filters", {})),
   ann: null,
   search: { q: "", page: 1, local: [], remote: [], author: null },
   lang: store.get("lang", "hans") === "hant" ? "hant" : "hans",
+  dict: null,           // 默写：{ blanks, answers }
+  rate: Math.min(1.5, Math.max(0.5, +store.get("rate", 0.9) || 0.9)),
 };
 api.setLang(LANGS[state.lang][1]);
 // 旧版筛选（诗泉的朝代名、「五言绝句」等体裁）换成主诗库的叫法
@@ -86,13 +89,16 @@ function findTextbook(p) {
 }
 
 /* ---------------- 作者生平 / 本诗赏析（静态数据，按需载入） ---------------- */
+let CATALOG = null;
 let NOTES = null, POET_INFO = null, NOTES_BY_FIRST = new Map(), sideLoading = null;
 function loadSide() {
   if (!sideLoading) {
     sideLoading = Promise.all([
       fetch("data/poets.json" + VQ).then((r) => r.json()),
       fetch("data/notes.json" + VQ).then((r) => r.json()),
-    ]).then(([p, n]) => {
+      CATALOG ? Promise.resolve(CATALOG) : fetch("data/catalog.json" + VQ).then((r) => r.json()),
+    ]).then(([p, n, c]) => {
+      CATALOG = c;
       POET_INFO = p.poets || p; NOTES = n.notes || n;
       // 诗名写法不同（如「鼓吹曲辞 将进酒」「水调歌头·明月几时有」）时按 作者 + 首句前五字 对上
       NOTES_BY_FIRST = new Map(Object.entries(NOTES).filter(([, v]) => v.f).map(([k, v]) => [k.split("|")[1] + "|" + v.f, v]));
@@ -113,8 +119,10 @@ async function drawSide() {
   const au = $("sideAu"), no = $("sideNote");
   if (!p) return;
   const seq = ++sideSeq;
+  const first = !NOTES;
   try { await loadSide(); } catch { au.hidden = no.hidden = true; return; }
   if (seq !== sideSeq) return;
+  if (first && (noteFor(p) || {}).ci) { draw(false); return; }     // 注释词要在诗笺上画虚线：数据到了重画一次
   const s = view(p).simp;
   const D = (x) => esc(toDisp(x || ""));
   const poet = POET_INFO[s.author];
@@ -136,11 +144,13 @@ async function drawSide() {
   $("sideAuBody").innerHTML = auHTML;
   au.hidden = !auHTML;
   const n = noteFor(p);
+  const rel = study.related(s, DAILY, CATALOG);
+  const relHTML = rel.length ? `<h4>相关的诗</h4><div class="rel">${rel.map((r) => `<button type="button" data-rel="${r.i}"><b>${D(r.d.t)}</b><small>${D(r.d.a)}${r.why ? " · " + D(r.why) : ""}</small></button>`).join("")}</div>` : "";
   if (n) {
-    $("sideNoteBody").innerHTML = [n.yi && `<h4>诗意</h4><p>${D(n.yi)}</p>`, n.qing && `<h4>情感</h4><p>${D(n.qing)}</p>`, n.bei && `<h4>创作背景</h4><p>${D(n.bei)}</p>`].filter(Boolean).join("");
+    $("sideNoteBody").innerHTML = [n.yi && `<h4>诗意</h4><p>${D(n.yi)}</p>`, n.qing && `<h4>情感</h4><p>${D(n.qing)}</p>`, n.bei && `<h4>创作背景</h4><p>${D(n.bei)}</p>`].filter(Boolean).join("") + relHTML;
     no.hidden = false; no.classList.remove("empty");
   } else {
-    $("sideNoteBody").innerHTML = `<p class="muted">暂无赏析</p>`;
+    $("sideNoteBody").innerHTML = `<p class="muted">暂无赏析</p>` + relHTML;
     no.hidden = false; no.classList.add("empty");
   }
 }
@@ -176,10 +186,12 @@ function ovKey(p) { const s = view(p).simp; return "ov:" + store.hash(s.title + 
 function overrides() { return state.poem ? store.get(ovKey(state.poem), {}) : {}; }
 
 function setPoem(p, opts = {}) {
+  study.stopSpeak(); setSpeakingUI(false);
+  state.dict = null;
   state.poem = p;
   state.view.hi = opts.hi || "";
   state.view.today = p.source === "daily" && p.dailyIndex === todayIndex();
-  state.view.tag = p.source === "daily" ? "小学必背" : (p.type && p.type !== "其他" ? p.type : "诗库");
+  state.view.tag = opts.tag || (p.source === "daily" ? "小学必背" : (p.type && p.type !== "其他" ? p.type : "诗库"));
   state.view.veiled = new Set(state.view.veil ? p.lines.map((_, i) => i) : []);
   state.alt = opts.alt !== undefined ? opts.alt : null;
   if (p.source === "api" && opts.alt === undefined) {
@@ -200,9 +212,10 @@ function draw(animate = false) {
   state.disp = disp;
   const o = { textbook: state.settings.textbook, recite: state.settings.recite, overrides: overrides(), hi: toSimp(state.view.hi) };
   // 按简体注音，再换上当前简繁的字形（逐字对齐）
+  const pz = state.settings.pingze && study.isJinti(simp.lines);
   state.ann = {
     title: glyphs(annotate([splitTitle(simp.title).main], { ...o, prefix: "t", hi: "" }), [splitTitle(disp.title).main]),
-    lines: glyphs(annotate(simp.lines, o), disp.lines),
+    lines: glyphs(study.decorate(annotate(simp.lines, o), simp.lines, { note: noteFor(p), pingze: pz, dictation: state.dict }), disp.lines),
   };
   applyDisplay();
   renderPoem($("poemView"), disp, state.ann, { ...state.view, hi: toDisp(state.view.hi), animate, sub: splitTitle(disp.title).sub, authorKey: simp.author });
@@ -216,6 +229,8 @@ function draw(animate = false) {
   } else { note.hidden = true; note.innerHTML = ""; }
   document.title = `${disp.title} · ${disp.author ? disp.author + " · " : ""}吟诗`;
   syncControls();
+  drawTip(pz);
+  syncStudy();
   drawSide();
 }
 
@@ -249,6 +264,7 @@ function setPinyin(on) {
   $("poemView").classList.toggle("no-py", !on); syncControls();
 }
 function setVeil(on) {
+  if (on && state.dict) state.dict = null;
   state.view.veil = on;
   state.view.veiled = new Set(on && state.poem ? state.poem.lines.map((_, i) => i) : []);
   draw(false);
@@ -522,6 +538,7 @@ function findCell(key) {
 function charPop(el) {
   const cell = findCell(el.dataset.k);
   if (!cell) return;
+  if (cell.blank) { dictPop(el, cell); return; }
   if (popAnchor === el) { closePop(); return; }
   closePop();
   el.classList.add("on");
@@ -530,7 +547,9 @@ function charPop(el) {
   const note = cell.ov ? `已自定义（默认 ${esc(cell.auto)}），本诗会记住。`
     : cell.fix ? `${setName[cell.fix.set]}：${esc(cell.fix.note)}`
     : opts.length > 1 ? "多音字，按上下文自动选了一个读音。" : "";
+  const gloss = el.dataset.ci && noteFor(state.poem) && noteFor(state.poem).ci[el.dataset.ci];
   const pop = openPop(`
+    ${gloss ? `<div class="gloss"><b>${esc(toDisp(el.dataset.ci))}</b><span>${esc(toDisp(gloss))}</span></div>` : ""}
     <h3><b>${esc(cell.ch)}</b><span>选择读音</span></h3>
     <div class="opts">${opts.map((p) => `<button class="opt" type="button" data-py="${esc(p)}" aria-pressed="${p === cell.py}">${esc(p)}</button>`).join("")}</div>
     ${note ? `<p class="pop-note">${note}</p>` : ""}
@@ -638,6 +657,7 @@ function settingsPop(anchor) {
       <p class="set-sub">读音</p>
       <label><b>课本读音修正</b><input type="checkbox" data-set="textbook" ${state.settings.textbook ? "checked" : ""}><small>按统编版课本通行读音，如 朝 zhāo、还 huán</small></label>
       <label><b>吟诵旧读</b><input type="checkbox" data-set="recite" ${state.settings.recite ? "checked" : ""}><small>叶音、旧读，如 斜 xiá、衰 cuī；课本已不采用</small></label>
+      <label><b>平仄标注</b><input type="checkbox" data-set="pingze" ${state.settings.pingze ? "checked" : ""}><small>参考：只标五七言绝句、律诗；按普通话声调，常见入声字算仄</small></label>
       ${n ? `<button class="btn text" type="button" data-clear-ov>清除本诗的 ${n} 处自定义读音</button>` : ""}
     </div>
   `, anchor, { sheetOnMobile: true, cls: "pop-set" });
@@ -900,11 +920,7 @@ function bind() {
     document.querySelectorAll("#drawer .chip").forEach((c) => c.setAttribute("aria-pressed", "false")); });
 
   // 导出
-  $("btnPrint").addEventListener("click", async () => {
-    const d = state.disp || state.poem;
-    if (d) await fonts.ready(d.title + d.lines.join(""));
-    window.print();
-  });
+  $("btnPrint").addEventListener("click", (e) => printPop(e.currentTarget));
   $("btnCopy").addEventListener("click", async () => {
     if (!state.ann) return;
     toast((await copyText(poemToText(state.disp || state.poem, state.ann))) ? "已复制带拼音的文本" : "复制失败，请手动选择");
@@ -915,7 +931,7 @@ function bind() {
     try {
       const d = state.disp || state.poem;
       await fonts.ready(d.title + d.lines.join("") + (d.author || "") + (d.dynasty || ""));
-      const blob = await cardToPNG($("poem"), await themes.bgImage().catch(() => null));
+      const blob = await cardToPNG($("poem"), await themes.bgImage().catch(() => null), exportExtras());
       download(blob, `吟诗-${baseTitle((state.disp || state.poem).title) || "古诗"}.png`);
       toast("图片已导出");
     } catch (e) { console.warn(e); toast("导出失败，可以先用打印"); }
@@ -927,6 +943,7 @@ function bind() {
     if (e.key === "Escape") {
       if (!$("pop").hidden) { const a = popAnchor; closePop(); if (a) a.focus(); return; }
       if (!$("sheet").hidden) { closeSheet(); $("q").blur(); return; }
+      if (!$("browse").hidden) { closeBrowse(); return; }
       if (!$("drawer").hidden) { toggleDrawer(false); return; }
     }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -943,9 +960,318 @@ function bind() {
   if (document.fonts) document.fonts.ready.then(() => state.poem && fit($("poemView"), state.view.mode));
 }
 
+/* ---------------- 学习：朗读 · 默写 · 收藏 · 背诵打卡 · 平仄提示 ---------------- */
+const pkey = (p) => { const s = view(p).simp; return baseTitle(s.title) + "|" + s.author; };
+function drawTip(pz) {
+  const tip = $("cardTip");
+  const parts = [];
+  if (state.settings.pingze) {
+    parts.push(pz ? `<span class="pz-legend"><i class="pz pz-p">—</i>平 <i class="pz pz-z">|</i>仄 <i class="pz pz-r">|</i>入声（按仄）<small>参考</small></span>`
+      : `<span class="muted">平仄只标五七言绝句、律诗</span>`);
+  }
+  if (state.dict) {
+    const total = state.dict.blanks.size, done = Object.keys(state.dict.answers).length;
+    const ok = Object.entries(state.dict.answers).filter(([k, v]) => (findCell(k) || {}).ch === v).length;
+    parts.push(done < total ? `<span>默写：点空格填字（${done} / ${total}）</span><button class="btn text" type="button" data-dict-end>结束默写</button>`
+      : `<span class="dict-score">默写完成：答对 <b>${ok}</b> / ${total}</span><button class="btn ghost" type="button" data-dict-again>再来一次</button><button class="btn text" type="button" data-dict-end>看原诗</button>`);
+  }
+  tip.innerHTML = parts.join("");
+  tip.hidden = !parts.length;
+}
+function syncStudy() {
+  const p = state.poem; if (!p) return;
+  const k = pkey(p);
+  const fav = !!study.favs()[k];
+  $("btnFav").setAttribute("aria-pressed", String(fav));
+  $("btnFav").querySelector("span").textContent = fav ? "已收藏" : "收藏";
+  const rs = study.reciteState(k);
+  const rb = $("btnRecited");
+  rb.dataset.state = rs.state;
+  rb.setAttribute("aria-pressed", String(rs.state !== "new"));
+  rb.querySelector("span").textContent = { new: "背会了", due: "复习打卡", wait: `已背 · ${rs.r ? rs.r.next.slice(5).replace("-", "/") : ""} 复习`, done: "已掌握" }[rs.state];
+  $("btnDictate").setAttribute("aria-pressed", String(!!state.dict));
+  drawDue();
+}
+function drawDue() {
+  const due = study.dueList();
+  const chip = $("dueChip");
+  chip.hidden = !due.length;
+  chip.textContent = `今天有 ${due.length} 首诗该复习了`;
+}
+function toggleDictation() {
+  if (!state.poem) return;
+  closePop();
+  if (state.dict) { state.dict = null; draw(false); return; }
+  if (state.view.veil) { state.view.veil = false; state.view.veiled = new Set(); }
+  state.dict = study.makeDictation(state.ann.lines);
+  draw(false);
+  toast("点空格填字，可以选也可以自己写", 2200);
+}
+function dictPop(el, cell) {
+  if (popAnchor === el) { closePop(); return; }
+  closePop();
+  el.classList.add("on");
+  const pool = DAILY.map((d) => d.lines.join("")).join("") + state.poem.lines.join("");
+  const ch = study.choicesFor(cell.ch, view({ ...state.poem, lines: [pool], title: "", author: "", dynasty: "", type: "" }).disp.lines[0]);
+  const disp = (x) => toDisp(x);
+  const pop = openPop(`
+    <h3><span>这里是什么字？</span><small class="py">${esc(cell.py)}</small></h3>
+    <div class="opts dict-opts">${ch.map((c) => `<button class="dopt" type="button" data-dict-pick="${esc(c)}">${esc(disp(c))}</button>`).join("")}</div>
+    <form class="pop-row" data-dict-type><input type="text" maxlength="2" placeholder="自己写" aria-label="自己写这个字" autocomplete="off"><button class="btn solid" type="submit">填</button></form>
+  `, el, { cls: "pop-char" });
+  pop.dataset.k = cell.key;
+}
+function dictAnswer(key, ch) {
+  if (!state.dict) return;
+  const c = Array.from(toSimp(ch || "")).find((x) => HAN.test(x));
+  if (!c) { toast("请写一个汉字"); return; }
+  state.dict.answers[key] = c;
+  closePop(); draw(false);
+  const total = state.dict.blanks.size, done = Object.keys(state.dict.answers).length;
+  if (done >= total) {
+    const ok = Object.entries(state.dict.answers).filter(([k, v]) => (findCell(k) || {}).ch === v).length;
+    toast(ok === total ? `全对！${ok} / ${total}` : `答对 ${ok} / ${total}，红色的是写错的`, 2600);
+  }
+}
+let speakingNow = false;
+function setSpeakingUI(on) {
+  speakingNow = on;
+  const b = $("btnRead"); if (!b) return;
+  b.setAttribute("aria-pressed", String(on));
+  b.querySelector("span").textContent = on ? "停止" : "朗读";
+  if (!on) document.querySelectorAll("#poemView ruby.say").forEach((r) => r.classList.remove("say"));
+}
+function speakCells(li, ci) {
+  document.querySelectorAll("#poemView ruby.say").forEach((r) => r.classList.remove("say"));
+  if (li < 0) return;
+  const el = document.querySelector(`#poemView ruby.c[data-k="${li}:${ci}"]`);
+  if (el) el.classList.add("say");
+}
+function readPop(anchor) {
+  if (speakingNow) { study.stopSpeak(); setSpeakingUI(false); closePop(); return; }
+  if (popAnchor === anchor) { closePop(); return; }
+  closePop();
+  const s = view(state.poem).simp, d = state.disp || state.poem;
+  openPop(`
+    <h3><span>朗读</span><small>${esc(study.voiceName())}</small></h3>
+    <div class="read-row"><button class="btn solid" type="button" data-read-all>▶ 整首</button>
+      <label class="read-loop"><input type="checkbox" data-read-loop ${store.get("readLoop", false) ? "checked" : ""}> 单句循环</label></div>
+    <ol class="read-lines">${d.lines.map((l, i) => `<li><button type="button" data-read-line="${i}">▶ ${esc(l)}</button></li>`).join("")}</ol>
+    <label class="read-rate"><span>语速</span><input type="range" min="0.5" max="1.5" step="0.1" value="${state.rate}" data-read-rate aria-label="语速"><b id="rateVal">${state.rate.toFixed(1)}</b></label>
+  `, anchor, { sheetOnMobile: true, cls: "pop-read" });
+  void s;
+}
+function speak(which) {
+  const s = view(state.poem).simp;
+  const lines = which === "all" ? s.lines.map((t, li) => ({ text: t, li })) : [{ text: s.lines[which], li: which }];
+  if (which === "all") lines.unshift({ text: `${s.title}，${s.dynasty ? s.dynasty + "，" : ""}${s.author}。`, li: -9 });
+  const loop = which !== "all" && store.get("readLoop", false);
+  setSpeakingUI(true);
+  if (isMobile()) closePop();
+  study.speakLines(lines, { rate: state.rate, loop, onChar: (li, ci) => (li === -9 ? speakCells(-1) : speakCells(li, ci)), onEnd: () => setSpeakingUI(false) });
+}
+
+/* ---------------- 打印 / 导出选项 ---------------- */
+const PRINT_DEFAULT = { py: true, yi: false, ci: false, shang: false, big: false };
+const printOpts = () => Object.assign({}, PRINT_DEFAULT, store.get("printOpts", {}));
+function printPop(anchor) {
+  if (popAnchor === anchor) { closePop(); return; }
+  closePop();
+  const o = printOpts(), n = noteFor(state.poem);
+  const box = (k, label, dis) => `<label class="pchk${dis ? " dis" : ""}"><input type="checkbox" data-popt="${k}" ${o[k] && !dis ? "checked" : ""} ${dis ? "disabled" : ""}> ${label}</label>`;
+  openPop(`
+    <h3><span>打印 / 导出</span></h3>
+    <div class="pchks">${box("py", "拼音")}${box("big", "大字")}${box("yi", "译文", !(n && n.yi))}${box("ci", "注释", !(n && n.ci))}${box("shang", "赏析", !(n && (n.qing || n.bei)))}</div>
+    <p class="pop-note">译文、注释、赏析只有收录了赏析的诗才有。大字只用于打印。</p>
+    <div class="pop-row"><button class="btn solid" type="button" data-do-print>打印</button><button class="btn ghost" type="button" data-do-export>导出图片</button></div>
+  `, anchor, { sheetOnMobile: true, cls: "pop-print" });
+}
+function extraBlocks() {
+  const o = printOpts(), n = noteFor(state.poem);
+  if (!n) return [];
+  const out = [];
+  if (o.yi && n.yi) out.push({ h: "译文", t: toDisp(n.yi) });
+  if (o.ci && n.ci) out.push({ h: "注释", t: Object.entries(n.ci).map(([w, m]) => `${toDisp(w)}：${toDisp(m)}`).join("；") });
+  if (o.shang && (n.qing || n.bei)) out.push({ h: "赏析", t: [n.qing, n.bei].filter(Boolean).map(toDisp).join("") });
+  return out;
+}
+function exportExtras() { return extraBlocks(); }
+async function doPrint() {
+  closePop();
+  const o = printOpts();
+  const box = $("printExtra");
+  box.innerHTML = extraBlocks().map((b) => `<h4>${esc(b.h)}</h4><p>${esc(b.t)}</p>`).join("");
+  document.body.classList.toggle("print-nopy", !o.py);
+  document.body.classList.toggle("print-big", !!o.big);
+  const d = state.disp || state.poem;
+  if (d) await fonts.ready(d.title + d.lines.join("") + box.textContent);
+  window.print();
+}
+
+/* ---------------- 分类找诗 · 我的诗单 · 诗词接龙 ---------------- */
+let browseTab = "cat", browseSel = "";
+async function openBrowse(tab) {
+  if (tab) browseTab = tab;
+  closePop(); closeSheet();
+  $("browse").hidden = false; $("scrim").hidden = false; document.body.classList.add("sheet-open");
+  try { await loadSide(); } catch { /* 分类数据没载入时只显示诗单 */ }
+  renderBrowse();
+}
+function closeBrowse() {
+  $("browse").hidden = true;
+  if ($("sheet").hidden) { $("scrim").hidden = true; document.body.classList.remove("sheet-open"); }
+}
+function poemBtn(p, i, extra = "") {
+  const d = view(p).disp;
+  return `<li><button class="res" type="button" data-bp="${i}"><span class="res-t">${esc(d.title)}${extra}</span><span class="res-m">${esc(d.author)}${d.dynasty ? " · " + esc(d.dynasty) : ""}</span><span class="res-l">${esc(d.lines[0] || "")}</span></button></li>`;
+}
+let browseItems = [];
+function renderBrowse() {
+  document.querySelectorAll("#browse [data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === browseTab)));
+  const body = $("browseBody");
+  browseItems = [];
+  const keyIndex = new Map(DAILY.map((d, i) => [d.t + "|" + d.a, i]));
+  if (browseTab === "cat") {
+    const C = CATALOG || { grades: {}, themes: {} };
+    const chips = (obj, kind) => Object.keys(obj).map((g) => `<button class="chip" type="button" data-bsel="${kind}:${esc(g)}" aria-pressed="${browseSel === kind + ":" + g}">${esc(toDisp(g))}</button>`).join("");
+    let list = "";
+    if (browseSel) {
+      const [kind, g] = browseSel.split(/:(.*)/);
+      const keys = ((kind === "g" ? C.grades : C.themes)[g] || []);
+      list = `<ol class="results">${keys.map((k) => keyIndex.get(k)).filter((i) => i != null).map((i) => { browseItems.push(dailyPoem(i)); return poemBtn(browseItems[browseItems.length - 1], browseItems.length - 1); }).join("")}</ol>`;
+    }
+    body.innerHTML = `<p class="b-h">按年级 <small>统编版小学课本，只收较确定的篇目</small></p><div class="chips">${chips(C.grades, "g")}</div>
+      <p class="b-h">按主题</p><div class="chips">${chips(C.themes, "t")}</div>${list}`;
+  } else if (browseTab === "mine") {
+    const t = study.todayParts();
+    const rec = Object.entries(study.recites()).map(([k, r]) => ({ k, r, st: study.reciteState(k, t).state }))
+      .sort((a, b) => ({ due: 0, wait: 1, done: 2 }[a.st] - { due: 0, wait: 1, done: 2 }[b.st]));
+    const fav = Object.entries(study.favs()).sort((a, b) => b[1].at - a[1].at);
+    const lab = { due: "今天复习", wait: "", done: "已掌握" };
+    body.innerHTML = `<p class="b-h">背诵打卡 <small>背会后按 1、2、4、7、15 天提醒复习</small></p>
+      ${rec.length ? `<ol class="results">${rec.map(({ r, st }) => { browseItems.push(r.p); return poemBtn(r.p, browseItems.length - 1, st === "wait" ? `<span class="res-badge">${esc(r.next.slice(5).replace("-", "/"))} 复习</span>` : `<span class="res-badge${st === "due" ? " due" : ""}">${lab[st]}</span>`); }).join("")}</ol>` : `<p class="muted b-empty">读完一首，点诗笺下方的「背会了」开始打卡</p>`}
+      <p class="b-h">我的收藏</p>
+      ${fav.length ? `<ol class="results">${fav.map(([, f]) => { browseItems.push(f.p); return poemBtn(f.p, browseItems.length - 1); }).join("")}</ol>` : `<p class="muted b-empty">点诗笺下方的「收藏」把喜欢的诗放到这里</p>`}
+      <p class="b-note">收藏和打卡只存在这台设备的浏览器里，不需要账号。</p>`;
+  } else {
+    renderJielong(body);
+  }
+}
+// 诗词接龙：下一句要以上一句的最后一个字开头
+let JL = null;
+async function jlPool() {
+  if (JL && JL.pool) return JL.pool;
+  let featured = [];
+  try { featured = await api.featuredPoems(); } catch { /* 只用课本诗 */ }
+  return study.clausesOf(DAILY.map((d) => ({ title: d.t, author: d.a, lines: d.lines })).concat(featured));
+}
+async function jlNext(fromText) {
+  const ch = study.lastHan(fromText);
+  const used = JL.used;
+  let cands = JL.pool.filter((c) => Array.from(c.text)[0] === ch && !used.has(c.text));
+  if (!cands.length) {
+    // 本地没有：去备用诗库按字随机找一首，取以这个字开头的一句
+    for (let i = 0; i < 2 && !cands.length; i++) {
+      try {
+        const p = await api.random({ char: ch });
+        if (p) cands = study.clausesOf([view(p).simp]).filter((c) => Array.from(c.text)[0] === ch && !used.has(c.text));
+      } catch { break; }
+    }
+  }
+  return { ch, cands };
+}
+async function jlRound() {
+  const { ch, cands } = await jlNext(JL.cur.text);
+  if (!cands.length) { JL.end = `没有找到以「${toDisp(ch)}」开头的诗句，接龙到这里结束`; renderBrowse(); return; }
+  const right = cands[Math.floor(Math.random() * cands.length)];
+  const wrong = JL.pool.filter((c) => Array.from(c.text)[0] !== ch).sort(() => Math.random() - 0.5).slice(0, 2);
+  JL.q = { ch, opts: [right, ...wrong].sort(() => Math.random() - 0.5), right };
+  renderBrowse();
+}
+async function jlStart() {
+  const pool = await jlPool();
+  const start = pool[Math.floor(Math.random() * Math.min(pool.length, 400))];
+  JL = { pool, used: new Set([start.text]), cur: start, chain: [start], score: 0, q: null, end: "" };
+  await jlRound();
+}
+function renderJielong(body) {
+  if (!JL) {
+    body.innerHTML = `<p class="b-h">诗词接龙 <small>下一句要以上一句的最后一个字开头</small></p><p class="b-intro">电脑先出一句，你从三句里挑出能接上的那一句。课本诗和唐诗三百首里找不到时，会去诗库再找。</p><button class="btn solid" type="button" data-jl-start>开始接龙</button>`;
+    return;
+  }
+  const chain = JL.chain.map((c) => `<li><b>${esc(toDisp(c.text))}</b><small>${esc(toDisp(c.author))}《${esc(toDisp(c.title))}》</small></li>`).join("");
+  const q = JL.q && !JL.end ? `<p class="b-h">接「<b class="zhu">${esc(toDisp(JL.q.ch))}</b>」字开头的诗句</p><div class="jl-opts">${JL.q.opts.map((o, i) => `<button class="btn ghost" type="button" data-jl-pick="${i}">${esc(toDisp(o.text))}</button>`).join("")}</div>` : "";
+  body.innerHTML = `<p class="b-h">诗词接龙 <small>接上 ${JL.score} 句</small></p><ol class="jl-chain">${chain}</ol>${q}
+    ${JL.end ? `<p class="b-intro">${esc(JL.end)}</p>` : ""}<div class="pop-row"><button class="btn text" type="button" data-jl-start>${JL.end ? "再玩一局" : "重新开始"}</button></div>`;
+  const ol = body.querySelector(".jl-chain"); if (ol) ol.scrollTop = ol.scrollHeight;
+}
+async function jlPick(i) {
+  if (!JL || !JL.q) return;
+  const o = JL.q.opts[i];
+  if (Array.from(o.text)[0] === JL.q.ch) {
+    JL.score++; JL.used.add(o.text); JL.chain.push(o); JL.cur = o; JL.q = null;
+    renderBrowse(); await jlRound();
+  } else {
+    JL.chain.push(JL.q.right); JL.end = `「${toDisp(o.text)}」不是以「${toDisp(JL.q.ch)}」开头的。正确答案已接在上面，共接上 ${JL.score} 句。`; JL.q = null;
+    renderBrowse();
+  }
+}
+
+function bindStudy() {
+  $("btnRead").addEventListener("click", (e) => readPop(e.currentTarget));
+  $("btnDictate").addEventListener("click", () => toggleDictation());
+  $("btnFav").addEventListener("click", () => { if (!state.poem) return; const on = study.toggleFav(pkey(state.poem), view(state.poem).simp); syncStudy(); toast(on ? "已收藏，在「诗单」里能找到" : "已取消收藏", 1600); });
+  $("btnRecited").addEventListener("click", () => {
+    if (!state.poem) return;
+    const k = pkey(state.poem);
+    const r = study.checkIn(k, view(state.poem).simp);
+    syncStudy();
+    if (!r.changed) { toast(r.r.stage >= study.INTERVALS.length ? "这首已经掌握了" : `下次复习：${r.r.next}`, 1800); return; }
+    toast(r.r.stage === 0 ? `背会了！${study.INTERVALS[0]} 天后提醒复习` : r.r.next ? `复习打卡，下次 ${r.r.next}` : "五次复习都完成了，已掌握", 2200);
+  });
+  $("dueChip").addEventListener("click", () => openBrowse("mine"));
+  $("btnBrowse").addEventListener("click", () => openBrowse());
+  $("browseClose").addEventListener("click", () => closeBrowse());
+  $("scrim").addEventListener("click", () => closeBrowse());
+  $("browse").addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-tab]"); if (t) { browseTab = t.dataset.tab; renderBrowse(); return; }
+    const sel = e.target.closest("[data-bsel]"); if (sel) { browseSel = browseSel === sel.dataset.bsel ? "" : sel.dataset.bsel; renderBrowse(); return; }
+    const bp = e.target.closest("[data-bp]"); if (bp) { const p = browseItems[+bp.dataset.bp]; if (p) { closeBrowse(); setPoem(p.source === "daily" && p.dailyIndex != null && DAILY[p.dailyIndex] ? dailyPoem(p.dailyIndex) : { ...p }); } return; }
+    if (e.target.closest("[data-jl-start]")) { e.target.closest("[data-jl-start]").disabled = true; await jlStart(); return; }
+    const jp = e.target.closest("[data-jl-pick]"); if (jp) { jlPick(+jp.dataset.jlPick); }
+  });
+  $("cardTip").addEventListener("click", (e) => {
+    if (e.target.closest("[data-dict-end]")) { state.dict = null; draw(false); }
+    if (e.target.closest("[data-dict-again]")) { state.dict = null; toggleDictation(); }
+  });
+  $("sideNote").addEventListener("click", (e) => { const r = e.target.closest("[data-rel]"); if (r) setPoem(dailyPoem(+r.dataset.rel)); });
+  $("pop").addEventListener("click", (e) => {
+    const pk = e.target.closest("[data-dict-pick]"); if (pk) { dictAnswer($("pop").dataset.k, pk.dataset.dictPick); return; }
+    if (e.target.closest("[data-read-all]")) { speak("all"); return; }
+    const rl = e.target.closest("[data-read-line]"); if (rl) { speak(+rl.dataset.readLine); return; }
+    if (e.target.closest("[data-do-print]")) { doPrint(); return; }
+    if (e.target.closest("[data-do-export]")) { closePop(); $("btnImage").click(); }
+  });
+  $("pop").addEventListener("input", (e) => {
+    if (e.target.matches("[data-read-rate]")) { state.rate = +e.target.value; store.set("rate", state.rate); const v = $("rateVal"); if (v) v.textContent = state.rate.toFixed(1); }
+  });
+  $("pop").addEventListener("change", (e) => {
+    if (e.target.matches("[data-read-loop]")) store.set("readLoop", e.target.checked);
+    if (e.target.matches("[data-popt]")) { const o = printOpts(); o[e.target.dataset.popt] = e.target.checked; store.set("printOpts", o); }
+  });
+  $("pop").addEventListener("submit", (e) => {
+    if (!e.target.matches("[data-dict-type]")) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    dictAnswer($("pop").dataset.k, e.target.querySelector("input").value);
+  }, true);
+  window.addEventListener("afterprint", () => { document.body.classList.remove("print-nopy", "print-big"); });
+  study.ttsReady().then((ok) => { $("btnRead").hidden = !ok; });
+}
+
 /* ---------------- 启动：不请求 API ---------------- */
 async function boot() {
   bind();
+  bindStudy();
   syncControls();
   if (state.lang === "hant") {
     document.documentElement.lang = "zh-Hant";
@@ -964,7 +1290,18 @@ async function boot() {
     return;
   }
   if (!window.pinyinPro) { $("poemView").innerHTML = `<p class="res-empty">拼音引擎没有载入。</p>`; return; }
-  setPoem(dailyPoem(todayIndex()), { focus: false });
+  // 今日一诗：逢节日、节气（北京时间）优先选应景的课本诗
+  let first = todayIndex(), tag;
+  try {
+    CATALOG = await fetch("data/catalog.json" + VQ).then((r) => r.json());
+    const sp = study.seasonPick(CATALOG);
+    if (sp) {
+      const i = DAILY.findIndex((d) => sp.poems.includes(d.t + "|" + d.a));
+      if (i >= 0) { first = i; tag = sp.name; }
+    }
+  } catch { /* 分类数据没载入：照常轮换 */ }
+  setPoem(dailyPoem(first), { focus: false, tag });
+  if (tag) state.view.today = true, draw(false);
 }
 fonts.apply();
 themes.apply();

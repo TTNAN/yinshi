@@ -27,4 +27,11 @@ os.makedirs(os.path.join(ROOT, "site/data"), exist_ok=True)
 w = lambda f, o: json.dump(o, open(os.path.join(ROOT, "site/data", f), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 w("poets.json", {"_说明": "诗人简介，吟诗原创撰写（tools/content/poets.py 生成）", "poets": poets})
 w("notes.json", {"_说明": "诗意、情感、创作背景与难词注释，吟诗原创撰写（tools/content/ 生成）；键为 诗名|作者，f 为首句前五字", "notes": notes})
-print("poets", len(poets), "notes", len(notes))
+from catalog import GRADES, THEMES, FESTIVALS, JIEQI
+keys = set(first)
+for grp in (GRADES, THEMES):
+    for g, ks in grp.items():
+        bad = [k for k in ks if k not in keys]; assert not bad, (g, bad)
+w("catalog.json", {"_说明": "分类找诗：年级（统编版，只收较确定的篇目）、主题；节日与节气对应的课本诗", "grades": GRADES, "themes": THEMES,
+                   "festivals": FESTIVALS, "jieqi": [{"name": n, "m": m, "d": d, "poems": ps} for n, m, d, ps in JIEQI]})
+print("poets", len(poets), "notes", len(notes), "catalog", sum(map(len, GRADES.values())))

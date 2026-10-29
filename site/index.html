@@ -29,7 +29,7 @@
 })();
 </script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291400">
+<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291429">
 </head>
 <body>
 <a class="skip" href="#poem">跳到诗文</a>
@@ -54,6 +54,10 @@
     <button class="btn ghost" id="btnFeihua" type="button" aria-haspopup="dialog" title="飞花令">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-4 1.5-7 4.5-8-1 3.5-1.5 6-4.5 8Zm0 0c-4 0-7-1.5-8-4.5 3.5 1 6 1.5 8 4.5Zm0 0c0 4-1.5 7-4.5 8 1-3.5 1.5-6 4.5-8Zm0 0c4 0 7 1.5 8 4.5-3.5-1-6-1.5-8-4.5Z"/></svg>
       <span>飞花令</span>
+    </button>
+    <button class="btn ghost" id="btnBrowse" type="button" title="分类找诗 · 我的诗单 · 接龙">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h4.5v15H5zM9.5 4.5H14v15H9.5zM15 5.2l3.6-.9 2.9 14.6-3.6.8z"/></svg>
+      <span>诗单</span>
     </button>
     <button class="btn ghost icon-only" id="btnFilter" type="button" aria-expanded="false" aria-controls="drawer" title="朝代 · 体裁 · 诗人">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
@@ -107,6 +111,7 @@
     </div>
   </div>
 
+  <button class="due-chip" id="dueChip" type="button" hidden></button>
   <div class="card-wrap">
   <article class="card" id="poem" tabindex="-1" aria-live="polite">
     <button class="card-gear" id="btnSettings" type="button" aria-haspopup="dialog" title="设置">
@@ -115,7 +120,15 @@
     </button>
     <div class="poem" id="poemView"></div>
     <div class="card-note" id="cardNote" hidden></div>
+    <div class="card-tip" id="cardTip" hidden></div>
+    <div class="print-extra" id="printExtra"></div>
   </article>
+  <div class="study" role="group" aria-label="学习">
+    <button type="button" class="st" id="btnRead" aria-pressed="false" aria-haspopup="dialog" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h3l4 3.5v-11L8 10zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg><span>朗读</span></button>
+    <button type="button" class="st" id="btnDictate" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h4l10-10-4-4L5 15zM13 7l4 4"/></svg><span>默写</span></button>
+    <button type="button" class="st" id="btnFav" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z"/></svg><span>收藏</span></button>
+    <button type="button" class="st" id="btnRecited" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg><span>背会了</span></button>
+  </div>
   <!-- 宽屏：诗笺左右两侧；窄屏：诗笺下方可展开的两节（默认收起）。内容来自 data/poets.json、data/notes.json，按需载入 -->
   <section class="side side-au" id="sideAu" aria-label="作者" hidden>
     <button class="side-toggle" type="button" aria-expanded="false" aria-controls="sideAuBody"><span>作者</span><i aria-hidden="true"></i></button>
@@ -164,27 +177,41 @@
   <div class="sheet-more"><button type="button" class="btn ghost" id="btnMore" hidden>更多结果</button></div>
 </aside>
 
+<!-- 分类找诗 · 我的诗单 · 诗词接龙 -->
+<aside class="sheet browse" id="browse" role="dialog" aria-modal="true" aria-label="诗单" hidden>
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head browse-head">
+    <div class="seg seg-sm" role="tablist" aria-label="诗单">
+      <button type="button" role="tab" data-tab="cat" aria-selected="true">分类</button>
+      <button type="button" role="tab" data-tab="mine" aria-selected="false">我的诗单</button>
+      <button type="button" role="tab" data-tab="jl" aria-selected="false">接龙</button>
+    </div>
+    <button type="button" class="btn text sheet-close" id="browseClose">关闭</button>
+  </div>
+  <div class="browse-body" id="browseBody"></div>
+</aside>
+
 <div class="pop" id="pop" role="dialog" aria-modal="false" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
-<script src="poem/config.js?v=202610291400"></script>
+<script src="poem/config.js?v=202610291429"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
 <!-- 发版时把所有 ?v= 改成新的版本号（tools/bump-version.sh），避免浏览器拿旧缓存的脚本和样式拼在一起 -->
 <script type="importmap">
 {
   "imports": {
-    "./assets/js/api.js": "./assets/js/api.js?v=202610291400",
-    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291400",
-    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291400",
-    "./assets/js/main.js": "./assets/js/main.js?v=202610291400",
-    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291400",
-    "./assets/js/render.js": "./assets/js/render.js?v=202610291400",
-    "./assets/js/store.js": "./assets/js/store.js?v=202610291400",
-    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291400"
+    "./assets/js/api.js": "./assets/js/api.js?v=202610291429",
+    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291429",
+    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291429",
+    "./assets/js/main.js": "./assets/js/main.js?v=202610291429",
+    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291429",
+    "./assets/js/render.js": "./assets/js/render.js?v=202610291429",
+    "./assets/js/store.js": "./assets/js/store.js?v=202610291429",
+    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291429"
   }
 }
 </script>
-<script type="module" src="assets/js/main.js?v=202610291400"></script>
+<script type="module" src="assets/js/main.js?v=202610291429"></script>
 </body>
 </html>

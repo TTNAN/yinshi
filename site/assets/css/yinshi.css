@@ -650,11 +650,101 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
   .side-body { display: block; padding: 4px 0 0; font-size: 15px; line-height: 1.8; }
 }
 
+
+/* ---------- 学习：朗读 · 默写 · 收藏 · 背诵 ---------- */
+.seg button[aria-selected="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(60, 45, 25, .14), 0 0 0 1px var(--line-2); }
+.due-chip { display: block; margin: 0 auto 12px; padding: 6px 16px; border: 1px solid var(--zhu); border-radius: 999px; background: var(--zhu-soft); color: var(--zhu); font-size: 13.5px; letter-spacing: .12em; cursor: pointer; }
+.study { display: flex; justify-content: center; gap: 4px; margin: 14px auto 0; flex-wrap: wrap; }
+.st { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--ink-2); font-size: 14px; letter-spacing: .12em; transition: background .2s, color .2s, border-color .2s; }
+.st .i { width: 17px; height: 17px; }
+.st:hover { background: rgba(122, 111, 98, .1); color: var(--ink); }
+.st[aria-pressed="true"] { color: var(--zhu); border-color: rgba(181, 53, 42, .35); background: var(--zhu-soft); }
+.st#btnFav[aria-pressed="true"] .i { fill: currentColor; }
+.st#btnRecited[data-state="due"] { color: var(--card); background: var(--zhu); border-color: var(--zhu); }
+.card-tip { margin: calc(var(--cs, 40px) * .5) auto 0; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; font-size: 13.5px; color: var(--ink-3); text-align: center; }
+.card-tip .btn { height: 28px; font-size: 13px; padding: 0 12px; border: 1px solid var(--line-2); }
+.card-tip .dict-score b { color: var(--zhu); font-size: 18px; }
+.pz-legend { display: inline-flex; gap: 6px; align-items: center; }
+.pz-legend .pz { position: static; transform: none; font-size: 14px; }
+.pz-legend small { border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; font-size: 11px; }
+/* 平仄：字下方留出一行小空位放记号，不压到下一句的拼音 */
+.poem:has(.poem-body .pz) .poem-body ruby.c, .poem:has(.poem-body .pz) .poem-body .pc { padding-bottom: calc(var(--cs) * .34); }
+ruby.c .pz { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); font-style: normal; font-family: var(--ui); font-size: max(10px, calc(var(--cs) * .26)); line-height: 1; color: var(--ink-3); pointer-events: none; }
+ruby.c .pz-z { color: var(--zhu); font-weight: 600; }
+ruby.c .pz-r { color: #c07a2a; font-weight: 600; }
+.pz-legend .pz-z { color: var(--zhu); font-weight: 600; } .pz-legend .pz-r { color: #c07a2a; font-weight: 600; }
+ruby.c.ci .h { text-decoration: underline dotted var(--zhu); text-decoration-thickness: max(1.5px, calc(var(--cs) * .04)); text-underline-offset: .2em; }
+.poem.veil ruby.c.ci .h, .poem.no-ci ruby.c.ci .h { text-decoration: none; }
+ruby.c.blank .h { color: var(--zhu); }
+ruby.c.blank::before { content: ""; position: absolute; left: 12%; right: 12%; bottom: calc(var(--cs) * .02); height: calc(var(--cs) * 1.02); border: 1.5px dashed var(--line-2); border-radius: 6px; pointer-events: none; }
+ruby.c.blank.ok::before { border: 1.5px solid #5f8a4a; }
+ruby.c.blank.ok .h { color: #3f6e2c; }
+ruby.c.blank.bad::before { border: 1.5px solid var(--zhu); background: var(--zhu-soft); }
+ruby.c.blank.bad .h { text-decoration: line-through; }
+ruby.c.say { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181, 53, 42, .3); }
+ruby.c.say .h { color: var(--zhu); }
+.gloss { margin: -2px 0 10px; padding: 8px 10px; border-radius: 8px; background: var(--zhu-soft); font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+.gloss b { font-family: var(--han); font-size: 17px; color: var(--zhu); margin-right: 8px; }
+.dict-opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.dopt { height: 48px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--tile); font-family: var(--han); font-size: 24px; color: var(--ink); }
+.dopt:hover { border-color: var(--zhu); color: var(--zhu); }
+.pop h3 .py { font-family: var(--py); font-size: 15px; color: var(--ink-3); margin-left: auto; }
+.pop-read { width: min(360px, calc(100vw - 24px)); }
+.read-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.read-row .btn { height: 34px; padding: 0 16px; }
+.read-loop { font-size: 13px; color: var(--ink-3); display: inline-flex; gap: 6px; align-items: center; }
+.read-lines { list-style: none; margin: 10px 0; padding: 0; max-height: 40vh; overflow: auto; }
+.read-lines button { width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 8px; font-family: var(--han); font-size: 16px; color: var(--ink-2); }
+.read-lines button:hover { background: var(--zhu-soft); color: var(--ink); }
+.read-rate { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-3); }
+.read-rate input { flex: 1; accent-color: var(--zhu); }
+.pchks { display: grid; grid-template-columns: repeat(3, auto); gap: 8px 16px; margin: 4px 2px 8px; }
+.pchk { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--ink-2); }
+.pchk.dis { color: var(--ink-4); }
+.pchk input { accent-color: var(--zhu); }
+.print-extra { display: none; }
+/* 相关的诗 */
+.side .rel { display: grid; gap: 4px; margin-top: 4px; }
+.side .rel button { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; text-align: left; border: 0; border-radius: 8px; background: none; padding: 4px 6px; margin: 0 -6px; color: var(--ink-2); }
+.side .rel button:hover { background: var(--zhu-soft); }
+.side .rel b { font-family: var(--han); font-weight: 400; font-size: 15.5px; color: var(--ink); }
+.side .rel small { font-family: var(--ui); font-size: 12px; color: var(--ink-3); }
+/* 诗单（分类 · 我的诗单 · 接龙） */
+.browse .browse-head { justify-content: space-between; }
+.browse-body { flex: 1; overflow-y: auto; padding: 4px 16px 20px; overscroll-behavior: contain; }
+.browse-body .results { padding: 0; overflow: visible; }
+.b-h { margin: 16px 0 8px; font-size: 13px; color: var(--ink-2); letter-spacing: .2em; }
+.b-h small { margin-left: 8px; letter-spacing: 0; color: var(--ink-4); font-size: 12px; }
+.b-h .zhu { color: var(--zhu); font-family: var(--han); font-size: 20px; font-weight: 400; }
+.b-empty, .b-note, .b-intro { font-size: 13.5px; color: var(--ink-3); line-height: 1.8; }
+.b-note { margin-top: 16px; font-size: 12px; color: var(--ink-4); }
+.browse .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.res-badge.due { background: var(--zhu); color: var(--card); }
+.jl-chain { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow: auto; }
+.jl-chain li { padding: 8px 0; border-bottom: 1px dashed var(--line); display: flex; flex-direction: column; }
+.jl-chain b { font-family: var(--han); font-weight: 400; font-size: 19px; letter-spacing: .1em; color: var(--ink); }
+.jl-chain small { font-size: 12px; color: var(--ink-3); }
+.jl-opts { display: grid; gap: 8px; }
+.jl-opts .btn { height: auto; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line-2); font-family: var(--han); font-size: 18px; letter-spacing: .1em; justify-content: flex-start; }
+@media (max-width: 760px) {
+  #btnBrowse span { display: none; }
+  .study { gap: 0; margin-top: 10px; }
+  .st { padding: 0 10px; font-size: 13px; letter-spacing: .05em; }
+}
+
 /* ---------- 打印：只要诗，干净 A4 ---------- */
 @media print {
   @page { size: A4; margin: 18mm 16mm; }
   body { background: #fff !important; padding: 0; }
-  .topbar, .drawer, .toolbar, .actions, .hint, .dock, .sheet, .scrim, .pop, .toast, .card-gear, .card-note, .skip, .tagline, .side { display: none !important; }
+  .topbar, .drawer, .toolbar, .actions, .hint, .dock, .sheet, .scrim, .pop, .toast, .card-gear, .card-note, .skip, .tagline, .side, .study, .due-chip, .card-tip { display: none !important; }
+  .print-extra { display: block; margin: 10mm auto 0; max-width: 150mm; font-family: var(--han); font-size: 12pt; line-height: 1.8; color: #333; }
+  .print-extra h4 { margin: 4mm 0 1mm; font-family: var(--ui); font-size: 10pt; font-weight: 400; letter-spacing: .3em; color: #7a6f62; }
+  .print-extra p { margin: 0; }
+  body.print-nopy .poem rt { visibility: hidden; }
+  body.print-big .poem { --cs: calc(42pt * var(--fs, 1)) !important; }
+  body.print-big .poem.m-g { --cs: calc(34pt * var(--fs, 1)) !important; }
+  ruby.c .pz { color: #555 !important; }
+  ruby.c.say { background: none !important; box-shadow: none !important; }
   /* 打印一律白纸黑字（夜读等主题也是） */
   :root[data-theme] { --ink: #1f1b16; --ink-2: #4a4239; --ink-3: #7a6f62; --zhu: #b5352a; --grid: #d79a90; --card: #fff; color-scheme: light; }
   body { background-image: none !important; }

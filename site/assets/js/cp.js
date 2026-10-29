@@ -121,6 +121,9 @@ function fromFeatured(f) {
   return { id: "cp" + f.id, cp: f.id, title: f.t, author: f.a, dynasty: f.d, type: "诗", lines: f.l.slice(), source: "api", lang: "hans" };
 }
 
+/** 唐诗三百首（简体全文，诗词接龙用） */
+export async function featuredPoems() { await load(); const f = await featured(); return [...f.values()].map(fromFeatured); }
+
 /** 按编号取诗（featured 内的不用下载大块） */
 export async function poems(ids) {
   await load();
