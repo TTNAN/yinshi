@@ -48,7 +48,7 @@ export function renderPoem(root, poem, ann, view) {
     return `<p class="line${veiled}" data-li="${li}">${clauses}</p>`;
   }).join("");
 
-  root.className = ["poem", "m-" + view.mode, view.pinyin ? "" : "no-py", view.veil ? "veil" : "", view.animate ? "ink-in" : ""].filter(Boolean).join(" ");
+  root.className = ["poem", "m-" + view.mode, view.mode === "v" && view.vdir === "lr" ? "v-lr" : "", view.pinyin ? "" : "no-py", view.veil ? "veil" : "", view.animate ? "ink-in" : ""].filter(Boolean).join(" ");
   root.innerHTML = `<div class="poem-scroll">
     <header class="poem-head">
       <div class="tagline">${tags}</div>
@@ -91,6 +91,30 @@ export function fit(root, mode) {
     const maxLen = Math.max(1, ...clauses.map((c) => units(c, 1.38, .72)), units(titleCells, 1.38 * .82, .72 * .82));
     size = Math.min(pref, availW / maxLen);
   }
+  // 用户字号（设置里的 小/中/大/特大）：乘在自适应字号上。放大后一句放不下就在句内换行，不裁切
+  const scale = parseFloat(root.dataset.fs) || 1;
+  let wrap = false;
+  if (scale !== 1) {
+    size *= scale;
+    if (mode !== "v") {
+      const unit = mode === "g" ? 1.5 : 1.38;
+      const longest = mode === "g" ? Math.max(1, ...clauses.map((c) => units(c, 1.5, 1.5))) + .2
+        : Math.max(1, ...clauses.map((c) => units(c, 1.38, .72)));
+      size = Math.min(size, availW / (unit * 4 + .8));          // 每行至少放得下四个字
+      wrap = size * longest > availW;
+      // 标题也可能放不下
+      if (!wrap && titleCells.length && size * units(titleCells, 1.38 * .82, .72 * .82) > availW) wrap = true;
+    }
+  }
   size = Math.max(16, Math.floor(size));
+  root.classList.toggle("wrapc", wrap);
   root.style.setProperty("--cs", size + "px");
+  if (wrap) {
+    // 句内换行时让各行字数均匀（7 字 → 4+3，5 字 → 3+2），标点跟着前一个字，不单独成行
+    const g = mode === "g", cellW = g ? 1.5 : 1.38, tail = g ? 0 : .72;
+    const per = Math.max(1, Math.floor((availW / size - tail) / cellW));
+    const n = Math.max(1, ...clauses.map((c) => (g ? c.length : c.filter((el) => el.matches("ruby.c")).length)));
+    const rows = Math.ceil(n / per), even = Math.ceil(n / rows);
+    root.style.setProperty("--wrapw", Math.ceil((even * cellW + tail) * size + 2) + "px");
+  } else root.style.removeProperty("--wrapw");
 }

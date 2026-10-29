@@ -8,7 +8,7 @@ import * as store from "./store.js";
 const CFG = Object.assign({
   API_BASE: "https://poetry.palemoky.com",
   API_PREFIX: "/api",
-  PATHS: { random: "/poems/random", search: "/search", types: "/types", dynasties: "/dynasties" },
+  PATHS: { random: "/poems/random", search: "/search", poems: "/poems", types: "/types", dynasties: "/dynasties" },
   LANG: "zh-Hans",
   TIMEOUT_MS: 12000,
 }, window.YINSHI_CONFIG || {});
@@ -18,7 +18,7 @@ const recent = [];             // 最近请求时间戳
 const WINDOW_MS = 20000, MAX_IN_WINDOW = 5, COOLDOWN_MS = 90000;
 
 export class ApiError extends Error {
-  constructor(kind, message) { super(message); this.kind = kind; }
+  constructor(kind, message, status = 0, raw = "") { super(message); this.kind = kind; this.status = status; this.raw = raw; }
 }
 
 function url(key, params = {}) {
@@ -63,7 +63,7 @@ async function request(u) {
   try { body = await res.json(); } catch { /* 非 JSON */ }
   if (!res.ok) {
     const msg = body && body.error && body.error.message;
-    throw new ApiError("http", msg ? `诗库返回：${msg}` : `诗库暂时不可用（${res.status}）`);
+    throw new ApiError("http", msg ? `诗库返回：${msg}` : `诗库暂时不可用（${res.status}）`, res.status, msg || "");
   }
   return body;
 }
@@ -87,7 +87,7 @@ async function cached(u, persistMs = 0) {
 function pruneCache() {
   // 搜索缓存最多保留 40 条，避免 localStorage 越积越多
   try {
-    const keys = Object.keys(localStorage).filter((k) => k.startsWith("yinshi:c:") && k.includes(CFG.PATHS.search));
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith("yinshi:c:") && (k.includes(CFG.PATHS.search) || k.includes("author=")));
     if (keys.length <= 40) return;
     keys.map((k) => [k, (JSON.parse(localStorage.getItem(k)) || {}).at || 0])
       .sort((a, b) => a[1] - b[1]).slice(0, keys.length - 40)
@@ -102,10 +102,52 @@ export async function random(params = {}) {
   return body && body.data ? normalize(body.data) : null;
 }
 
+// 分页：公共实例给 hasMore；自建实例（/api/v1）给 has_next_page 或 page/total_pages
+function hasMoreOf(body, page) {
+  const pg = body && body.pagination;
+  if (!pg) return false;
+  if ("hasMore" in pg) return !!pg.hasMore;
+  if ("has_next_page" in pg) return !!pg.has_next_page;
+  if (pg.total_pages) return page < pg.total_pages;
+  return false;
+}
+
+// 接口能力探测：有的实例不支持 1–2 字搜索、或忽略 ?author=。探到后记一天，免得白白耗掉限流额度
+const CAP_MS = DAY;
+export function can(cap) { return store.getFresh("cap:" + cap, CAP_MS) !== false; }
+function mark(cap) { store.setFresh("cap:" + cap, false); }
+
 export async function search(q, page = 1) {
-  const body = await cached(url("search", { q, page }), DAY);
+  const short = Array.from(q.trim()).length < 3;
+  if (short && !can("short")) throw new ApiError("short", "诗库暂不支持一两个字的全文搜索");
+  let body;
+  try { body = await cached(url("search", { q, page }), DAY); }
+  catch (e) {
+    if (short && e.status === 400) { mark("short"); throw new ApiError("short", "诗库暂不支持一两个字的全文搜索"); }
+    throw e;
+  }
   const list = (body && Array.isArray(body.data) ? body.data : []).map(normalize);
-  return { list, hasMore: !!(body && body.pagination && body.pagination.hasMore) };
+  return { list, hasMore: hasMoreOf(body, page) };
+}
+
+// 某位作者的诗（/poems?author=）。不认 author 参数的实例会返回无关的诗，按作者名核对后丢弃
+export async function authorPoems(name, page = 1) {
+  if (!can("author")) return { list: [], hasMore: false, unsupported: true };
+  let body;
+  try { body = await cached(url("poems", { author: name, page }), DAY); }
+  catch (e) {
+    if (e.status === 404 && /author/i.test(e.raw)) return { list: [], hasMore: false };   // 没有这位作者
+    if (e.status === 400 || e.status === 404) { mark("author"); return { list: [], hasMore: false, unsupported: true }; }
+    throw e;
+  }
+  const all = (body && Array.isArray(body.data) ? body.data : []).map(normalize);
+  const list = all.filter((p) => p.author === name);
+  if (all.length && !list.length && page === 1) {
+    // 整页没有一首是这位作者的：多半是接口忽略了 author。没有这位作者时正常实例返回空列表
+    mark("author");
+    return { list: [], hasMore: false, unsupported: true };
+  }
+  return { list, hasMore: list.length === all.length && hasMoreOf(body, page) };
 }
 
 export async function meta(kind) {

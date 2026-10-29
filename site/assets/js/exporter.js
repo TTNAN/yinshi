@@ -34,19 +34,62 @@ function charRects(el) {
   return out;
 }
 
-export async function cardToPNG(card) {
-  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
-  const poem = card.querySelector(".poem");
+// 在屏幕外复制一张完整展开的诗笺来量位置：竖排不再横向滚动（宽度随列数增长），
+// 横排 / 田字格高度随内容增长，什么都不会被裁掉
+function stageClone(card) {
+  const live = card.querySelector(".poem");
+  const vertical = live.classList.contains("m-v");
+  const box = card.getBoundingClientRect();
+  const clone = card.cloneNode(true);
+  clone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  clone.removeAttribute("id");
+  clone.querySelectorAll(".card-gear, .card-note").forEach((el) => el.remove());
+  const poem = clone.querySelector(".poem");
   poem.classList.remove("ink-in");
+  Object.assign(clone.style, {
+    position: "fixed", left: "-100000px", top: "0", margin: "0", minHeight: "0",
+    maxWidth: "none", animation: "none", transition: "none",
+    width: vertical ? "max-content" : box.width + "px",
+    minWidth: box.width + "px",
+  });
+  if (vertical) {
+    const sc = poem.querySelector(".poem-scroll");
+    Object.assign(sc.style, { overflow: "visible", maxWidth: "none" });
+    poem.style.width = "max-content";
+  }
+  document.body.appendChild(clone);
+  return clone;
+}
+
+function safeScale(W, H) {
+  // 浏览器 canvas 单边约 32767px、面积约 2.68 亿像素
+  return Math.max(.5, Math.min(SCALE, 32000 / W, 32000 / H, Math.sqrt(2.5e8 / (W * H))));
+}
+
+export async function cardToPNG(liveCard) {
+  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
+  const card = stageClone(liveCard);
+  try { return await paint(card); } finally { card.remove(); }
+}
+
+async function paint(card) {
+  const poem = card.querySelector(".poem");
   const vertical = poem.classList.contains("m-v");
   const grid = poem.classList.contains("m-g");
   const box = card.getBoundingClientRect();
   const sigH = 54;
-  const W = Math.ceil(box.width), H = Math.ceil(box.height) + sigH;
+  // 实际内容可能超出卡片盒（保险起见再量一次所有字）
+  let right = box.right, bottom = box.bottom;
+  card.querySelectorAll(".h, rt, .poem-meta, .tagline").forEach((el) => {
+    const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
+    right = Math.max(right, r.right + 24); bottom = Math.max(bottom, r.bottom + 24);
+  });
+  const W = Math.ceil(right - box.left), H = Math.ceil(bottom - box.top) + sigH;
+  const S = safeScale(W, H);
   const canvas = document.createElement("canvas");
-  canvas.width = W * SCALE; canvas.height = H * SCALE;
+  canvas.width = Math.round(W * S); canvas.height = Math.round(H * S);
   const ctx = canvas.getContext("2d");
-  ctx.scale(SCALE, SCALE);
+  ctx.scale(S, S);
   const X = (r) => r.left - box.left, Y = (r) => r.top - box.top;
 
   // 纸
@@ -135,8 +178,9 @@ export async function cardToPNG(card) {
   ctx.save();
   ctx.fillStyle = "#b5352a"; roundRect(ctx, sx, sy, 26, 26, 4); ctx.fill();
   ctx.strokeStyle = "rgba(251,241,234,.8)"; ctx.lineWidth = 1; roundRect(ctx, sx + 2.5, sy + 2.5, 21, 21, 2.5); ctx.stroke();
-  ctx.fillStyle = "#fbf1ea"; ctx.font = `16px "LXGW WenKai", "Kaiti SC", serif`; ctx.fillText("吟", sx + 13, sy + 14);
-  ctx.textAlign = "right"; ctx.fillStyle = "#7a6f62"; ctx.font = `13px "LXGW WenKai", serif`;
+  const han = getComputedStyle(poem).getPropertyValue("--han").trim() || "serif";
+  ctx.fillStyle = "#fbf1ea"; ctx.font = `16px ${han}`; ctx.fillText("吟", sx + 13, sy + 14);
+  ctx.textAlign = "right"; ctx.fillStyle = "#7a6f62"; ctx.font = `13px ${han}`;
   ctx.fillText("吟诗 · 古诗拼音", sx - 10, sy + 14);
   ctx.restore();
 

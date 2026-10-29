@@ -1,3 +1,5 @@
+<p align="center"><img src="site/assets/logo.svg" width="120" alt="吟诗"></p>
+
 # 吟诗 · 给古诗注上拼音
 
 > 一张宣纸，一首诗，字上带拼音。给孩子读诗、给自己温诗。
@@ -19,12 +21,17 @@
 - **课本读音修正**（默认开）：`site/poem/poem-readings.json` 中 39 条按上下文片段匹配的修正，例如 朝辞白帝 zhāo、千里江陵一日还 huán、少小离家 shào、浑欲不胜簪 shēng。
 - **吟诵旧读**（默认关）：石径斜 xiá、鬓毛衰 cuī、一骑 jì 红尘、笼盖四野 yǎ 等传统读法。现行课本已不采用，所以只作可选项。
 - **找诗**
-  - 顶栏搜索：边打字边查内置课本精选；回车搜整个诗库（诗库搜索至少 3 个字；两个字的作者名会提供「随机一首他的诗」）。
+  - 顶栏搜索：边打字边查内置课本精选；回车搜整个诗库，一个字起就能搜。输入 2–4 个字时还会查「这位作者的诗」，有就以「李白的诗」一栏排在最前（可加载更多）。公共实例暂不支持一两个字的全文搜索、也不认 `?author=`，页面会自动探测并降级为课本精选、飞花令和「随机一首某人的诗」；自建实例则全部可用。
   - 随机：可在「筛选」抽屉里限定朝代、体裁、作者。
   - 飞花令：出一个字，随机来一首含这个字的诗，诗中该字以朱砂色标出。
   - 诗库里的同名诗若与课本文字不同（如《静夜思》作「床前看月光」），卡片下方会出现「改用课本版」。
 - **导出**：打印（只打印诗笺，干净 A4）、导出 PNG 图片（按屏幕版式逐字绘制，带落款小印）、复制带拼音文本（每行先拼音后汉字）。
 - **手机**：诗笺铺满屏幕，常用操作在底栏；搜索结果和飞花令为底部弹层。
+- **设置**（诗笺右上角）：
+  - 字体：宋（思源宋体，默认）/ 楷（霞鹜文楷）/ 黑（思源黑体）/ 仿宋（用系统自带仿宋）。只加载选中的那一种；思源字体走 `fonts.googleapis.cn`，按字分片下载。
+  - 字号（小 / 中 / 大 / 特大）、拼音大小（小 / 中 / 大）、行距（紧凑 / 适中 / 宽松）；放大后一句放不下会在句内换行，不裁切。
+  - 竖排方向：从右到左（传统）/ 从左到右。
+  - 以上都记在浏览器里，导出图片和打印同样生效；「恢复默认」一键还原。
 - **键盘**：`/` 搜索，`R` 随机，`Esc` 关闭弹层；诗笺内用方向键在字之间移动，回车改读音。
 
 ## 对诗库接口友好
@@ -62,6 +69,7 @@ window.YINSHI_CONFIG = {
   PATHS: {
     random: "/poems/random",
     search: "/search",                        // 自建实例为 "/poems/search"
+    poems: "/poems",                          // 作者诗目（自建实例支持 ?author=）
     types: "/types",
     dynasties: "/dynasties"
   },
@@ -100,6 +108,7 @@ window.YINSHI_CONFIG = {
 ```bash
 pip install playwright && python3 -m playwright install chromium
 python3 tests/e2e.py            # 截图输出到 tests/screens/
+# 已装系统 Chromium 时：YINSHI_CHROMIUM=/usr/bin/chromium python3 tests/e2e.py
 ```
 
 ## 致谢与许可
@@ -107,5 +116,5 @@ python3 tests/e2e.py            # 截图输出到 tests/screens/
 - 代码：MIT © 2026 Caesar (TTNAN)，见 [LICENSE](LICENSE)。
 - 拼音：[pinyin-pro](https://github.com/zh-lx/pinyin-pro)（MIT）。
 - 诗词数据：[诗泉 palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)，运行时通过公开 API 获取，仓库不包含其代码。
-- 字体：[霞鹜文楷 LXGW WenKai](https://github.com/lxgw/LxgwWenKai)（SIL OFL 1.1，经 jsDelivr 加载）、Noto Serif（SIL OFL 1.1，本地托管）。
+- 字体：思源宋体 / 思源黑体 Noto Serif SC、Noto Sans SC（SIL OFL 1.1，经 fonts.googleapis.cn 加载）、[霞鹜文楷 LXGW WenKai](https://github.com/lxgw/LxgwWenKai)（SIL OFL 1.1，选「楷」时经 jsDelivr 加载）、Noto Serif（拼音，SIL OFL 1.1，本地托管）。Logo 中的「吟」字形取自霞鹜文楷（SIL OFL 1.1）。
 - 感谢 [tjsky/pinyin-annotator](https://github.com/tjsky/pinyin-annotator) 带来的灵感——吟诗最初就是从它开始的；现在的版本是独立重写的新项目，不含它的代码。

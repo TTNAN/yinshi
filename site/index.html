@@ -6,9 +6,24 @@
 <title>吟诗 · 给古诗注上拼音</title>
 <meta name="description" content="吟诗：读一首带拼音的古诗。今日一诗、横排竖排田字格、飞花令、遮字背诵、课本读音修正。">
 <meta name="theme-color" content="#f3ede1">
-<link rel="icon" href="assets/seal.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.cn">
+<link rel="preconnect" href="https://fonts.gstatic.cn" crossorigin>
+<link rel="stylesheet" id="font-song" href="https://fonts.googleapis.cn/css2?family=Noto+Serif+SC:wght@400&amp;display=swap">
+<script>
+/* 首屏前套用上次选的诗文字体，只加载那一种 */
+(function () {
+  try {
+    var k = JSON.parse(localStorage.getItem("yinshi:font"));
+    var u = { kai: "https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css",
+              hei: "https://fonts.googleapis.cn/css2?family=Noto+Sans+SC:wght@400&display=swap", fang: "" };
+    if (!(k in u)) return;
+    document.documentElement.setAttribute("data-font", k);
+    if (u[k]) { var l = document.createElement("link"); l.rel = "stylesheet"; l.id = "font-" + k; l.href = u[k]; document.head.appendChild(l); }
+  } catch (e) { /* 存储不可用 */ }
+})();
+</script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/css/yinshi.css">
 </head>
@@ -17,7 +32,7 @@
 
 <header class="topbar" role="banner">
   <a class="brand" href="./" aria-label="吟诗 首页">
-    <span class="seal" aria-hidden="true">吟</span>
+    <img class="seal-img" src="assets/logo.svg" width="36" height="36" alt="" aria-hidden="true">
     <span class="brand-name">吟诗</span>
   </a>
 
@@ -79,9 +94,9 @@
   </div>
 
   <article class="card" id="poem" tabindex="-1" aria-live="polite">
-    <button class="card-gear" id="btnSettings" type="button" aria-haspopup="dialog" title="读音设置">
+    <button class="card-gear" id="btnSettings" type="button" aria-haspopup="dialog" title="设置">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h9M18 7h1M5 17h1M10 17h9"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
-      <span class="sr">读音设置</span>
+      <span class="sr">设置</span>
     </button>
     <div class="poem" id="poemView"></div>
     <div class="card-note" id="cardNote" hidden></div>
@@ -127,11 +142,6 @@
 <div class="pop" id="pop" role="dialog" aria-modal="false" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<footer class="foot">
-  <span>诗词数据 · <a href="https://github.com/palemoky/chinese-poetry-api" target="_blank" rel="noopener">诗泉</a></span>
-  <span>拼音 · <a href="https://github.com/zh-lx/pinyin-pro" target="_blank" rel="noopener">pinyin-pro</a></span>
-  <span>© Caesar</span>
-</footer>
 
 <script src="poem/config.js"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
