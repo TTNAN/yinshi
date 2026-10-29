@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>吟诗 · 给古诗注上拼音</title>
+<meta name="description" content="吟诗：读一首带拼音的古诗。今日一诗、横排竖排田字格、飞花令、遮字背诵、课本读音修正。">
+<meta name="theme-color" content="#f3ede1">
+<link rel="icon" href="assets/seal.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css">
+<link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/css/yinshi.css">
+</head>
+<body>
+<a class="skip" href="#poem">跳到诗文</a>
+
+<header class="topbar" role="banner">
+  <a class="brand" href="./" aria-label="吟诗 首页">
+    <span class="seal" aria-hidden="true">吟</span>
+    <span class="brand-name">吟诗</span>
+  </a>
+
+  <form class="search" id="searchForm" role="search" autocomplete="off">
+    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20"/></svg>
+    <input id="q" type="search" enterkeyhint="search" placeholder="搜诗名、诗句或作者" aria-label="搜诗名、诗句或作者">
+    <kbd class="kbd" aria-hidden="true">/</kbd>
+  </form>
+
+  <nav class="top-actions" aria-label="找诗">
+    <button class="btn ghost" id="btnRandom" type="button" title="随机一首（R）">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.5c2 0 3 1 4.5 3.5S14.5 17 16.5 17H20M4 17h3.5c1 0 1.8-.3 2.5-1M14 8c.7-.7 1.5-1 2.5-1H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5"/></svg>
+      <span>随机</span>
+    </button>
+    <button class="btn ghost" id="btnFeihua" type="button" aria-haspopup="dialog" title="飞花令">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-4 1.5-7 4.5-8-1 3.5-1.5 6-4.5 8Zm0 0c-4 0-7-1.5-8-4.5 3.5 1 6 1.5 8 4.5Zm0 0c0 4-1.5 7-4.5 8 1-3.5 1.5-6 4.5-8Zm0 0c4 0 7 1.5 8 4.5-3.5-1-6-1.5-8-4.5Z"/></svg>
+      <span>飞花令</span>
+    </button>
+    <button class="btn ghost icon-only" id="btnFilter" type="button" aria-expanded="false" aria-controls="drawer" title="朝代 · 体裁">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+      <span class="sr">朝代与体裁</span><i class="dot" hidden></i>
+    </button>
+  </nav>
+</header>
+
+<section class="drawer" id="drawer" aria-label="随机筛选" hidden>
+  <div class="drawer-inner">
+    <div class="drawer-row">
+      <h2>朝代</h2>
+      <div class="chips" id="chipsDyn" role="group" aria-label="朝代"></div>
+    </div>
+    <div class="drawer-row">
+      <h2>体裁</h2>
+      <div class="chips" id="chipsType" role="group" aria-label="体裁"></div>
+    </div>
+    <div class="drawer-row">
+      <h2>作者</h2>
+      <div class="drawer-author">
+        <input id="fAuthor" type="text" placeholder="如：李白" aria-label="作者">
+        <button class="btn solid" id="btnFilterGo" type="button">按条件随机一首</button>
+        <button class="btn text" id="btnFilterClear" type="button">清除</button>
+      </div>
+    </div>
+    <p class="drawer-note" id="drawerNote"></p>
+  </div>
+</section>
+
+<main class="stage" id="main">
+  <div class="toolbar" role="toolbar" aria-label="阅读方式">
+    <div class="seg" id="modeSeg" role="radiogroup" aria-label="排版">
+      <button type="button" role="radio" data-mode="h" aria-checked="true">横排</button>
+      <button type="button" role="radio" data-mode="v" aria-checked="false">竖排</button>
+      <button type="button" role="radio" data-mode="g" aria-checked="false">田字格</button>
+    </div>
+    <div class="toggles">
+      <button type="button" class="tog" id="togPinyin" aria-pressed="true">显示拼音</button>
+      <button type="button" class="tog" id="togVeil" aria-pressed="false">遮字背诵</button>
+    </div>
+  </div>
+
+  <article class="card" id="poem" tabindex="-1" aria-live="polite">
+    <button class="card-gear" id="btnSettings" type="button" aria-haspopup="dialog" title="读音设置">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h9M18 7h1M5 17h1M10 17h9"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      <span class="sr">读音设置</span>
+    </button>
+    <div class="poem" id="poemView"></div>
+    <div class="card-note" id="cardNote" hidden></div>
+  </article>
+
+  <div class="actions" role="group" aria-label="导出">
+    <button type="button" class="act" id="btnPrint">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2M7 14h10v6H7z"/></svg>打印</button>
+    <button type="button" class="act" id="btnImage">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="m4 16 4.5-4.5 4 4 2.5-2.5L20 18"/><circle cx="15.5" cy="9.5" r="1.3"/></svg>导出图片</button>
+    <button type="button" class="act" id="btnCopy">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="1.5"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/></svg>复制带拼音文本</button>
+  </div>
+  <p class="hint" id="hint">点任意一字可改读音 · 按 <kbd>/</kbd> 搜索 · <kbd>R</kbd> 随机</p>
+</main>
+
+<nav class="dock" aria-label="快捷操作">
+  <button type="button" id="dSearch"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20"/></svg><span>搜索</span></button>
+  <button type="button" id="dRandom"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.5c2 0 3 1 4.5 3.5S14.5 17 16.5 17H20M4 17h3.5c1 0 1.8-.3 2.5-1M14 8c.7-.7 1.5-1 2.5-1H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5"/></svg><span>随机</span></button>
+  <button type="button" id="dFeihua"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-4 1.5-7 4.5-8-1 3.5-1.5 6-4.5 8Zm0 0c-4 0-7-1.5-8-4.5 3.5 1 6 1.5 8 4.5Zm0 0c0 4-1.5 7-4.5 8 1-3.5 1.5-6 4.5-8Zm0 0c4 0 7 1.5 8 4.5-3.5-1-6-1.5-8-4.5Z"/></svg><span>飞花令</span></button>
+  <button type="button" id="dMode"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M12 4v16M4 12h16" stroke-dasharray="2 2"/></svg><span id="dModeLabel">横排</span></button>
+  <button type="button" id="dPinyin" aria-pressed="true"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 13h14" opacity=".5"/><path d="M8 18l4-11 4 11M9.5 14h5"/></svg><span>拼音</span></button>
+  <button type="button" id="dVeil" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.5"/><path d="M4 20 20 4"/></svg><span>背诵</span></button>
+</nav>
+
+<!-- 搜索结果：桌面为右侧抽屉，手机为底部弹层 -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="sheet-grip" aria-hidden="true"></div>
+  <div class="sheet-head">
+    <form class="search sheet-search" id="sheetForm" role="search" autocomplete="off">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20"/></svg>
+      <input id="q2" type="search" enterkeyhint="search" placeholder="搜诗名、诗句或作者" aria-label="搜诗名、诗句或作者">
+    </form>
+    <button type="button" class="btn text sheet-close" id="sheetClose">关闭</button>
+  </div>
+  <h2 class="sr" id="sheetTitle">搜索结果</h2>
+  <p class="sheet-status" id="sheetStatus"></p>
+  <ol class="results" id="results"></ol>
+  <div class="sheet-more"><button type="button" class="btn ghost" id="btnMore" hidden>更多结果</button></div>
+</aside>
+
+<div class="pop" id="pop" role="dialog" aria-modal="false" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer class="foot">
+  <span>诗词数据 · <a href="https://github.com/palemoky/chinese-poetry-api" target="_blank" rel="noopener">诗泉</a></span>
+  <span>拼音 · <a href="https://github.com/zh-lx/pinyin-pro" target="_blank" rel="noopener">pinyin-pro</a></span>
+  <span>© Caesar</span>
+</footer>
+
+<script src="poem/config.js"></script>
+<script src="vendor/pinyin-pro-3.29.5.min.js"></script>
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

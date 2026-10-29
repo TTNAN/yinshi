@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2026 Caesar (TTNAN)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---------------------------------------------------------------------------
+THIRD-PARTY
+
+pinyin-pro
+  site/vendor/pinyin-pro-3.29.5.min.js — unmodified npm build of pinyin-pro 3.29.5
+  https://github.com/zh-lx/pinyin-pro
+  MIT License, Copyright (c) 2022-present zh-lx
+  Full text: site/vendor/pinyin-pro.LICENSE.txt
+
+Noto Serif (pinyin typeface)
+  site/fonts/noto-serif-latin-400.woff2, site/fonts/noto-serif-latin-ext-400.woff2
+  Copyright 2022 The Noto Project Authors
+  SIL Open Font License 1.1 — full text: site/fonts/OFL.txt
+
+LXGW WenKai / 霞鹜文楷 (Chinese typeface, loaded from jsDelivr at runtime, not bundled)
+  https://github.com/lxgw/LxgwWenKai — SIL Open Font License 1.1
+
+Poem data — 诗泉 palemoky/chinese-poetry-api
+  Poems are fetched at runtime from the public HTTP API at
+  https://poetry.palemoky.com (https://github.com/palemoky/chinese-poetry-api).
+  No code from that project is included in this repository.
+
+Classical poem texts in site/poem/daily-poems.json are public-domain works.
