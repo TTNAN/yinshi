@@ -303,6 +303,13 @@ async function cpTitleSearch(q, limit = 12) {
 }
 
 // 去重：同一位诗人、正文开头相同就是同一首（诗名写法常不同，如「蜀道难」「相和歌辞 蜀道难」）
+/** 「相和歌辞 蜀道难」→ { title: "蜀道难", yuefu: true }（乐府分类前缀：XX歌辞 / XX曲辞 / XX辞，简繁都认） */
+export function yuefuTitle(t) {
+  const s = simp(String(t || "")).trim();
+  const m = s.match(/^(\S{1,6}[辞辭])\s+(\S.*)$/u);
+  const title = cp.normTitle(m ? m[2] : s);
+  return { title, yuefu: !!m };
+}
 const cpKey = (p) => simp(p.author) + "|" + Array.from(simp((p.lines || []).join(""))).filter((c) => /[\u3400-\u9fff]/.test(c)).slice(0, 12).join("");
 
 /** 搜索诗名、诗人（2 个字起）。单字改为随机抽几首含这个字的诗：返回 sampled: true */
@@ -324,9 +331,9 @@ export async function search(q, page = 1) {
   const withCp = async (r) => {
     const hits = await cpHits;
     if (!hits.length) return r;
-    const seen = new Set(hits.map(cpKey)), seen2 = new Set(hits.map((p) => cp.normTitle(simp(p.title)) + "|" + simp(p.author)));
+    const seen = new Set(hits.map(cpKey)), seen2 = new Set(hits.map((p) => yuefuTitle(p.title).title + "|" + simp(p.author)));
     // 主诗库 / 备用里同一首（同名同作者）不再重复
-    return { ...r, list: hits.concat(r.list.filter((p) => !seen.has(cpKey(p)) && !seen2.has(cp.normTitle(simp(p.title)) + "|" + simp(p.author)))) };
+    return { ...r, list: hits.concat(r.list.filter((p) => !seen.has(cpKey(p)) && !seen2.has(yuefuTitle(p.title).title + "|" + simp(p.author)))) };
   };
   // 3 个字以上的第一页同时问备用诗库：主诗库目前缺唐诗、宋诗（如《将进酒》《望庐山瀑布》），备用诗库有
   const extra = page === 1 && len >= FALLBACK.minSearch ? pmSearch(q, 1).catch(() => null) : Promise.resolve(null);
@@ -361,7 +368,7 @@ export async function authorPoems(name, page = 1, _same = null, dynasty = "") {
   const key = n + "|" + (dynasty ? simp(dynasty) : "");
   let st = merged.get(key);
   if (!st) {
-    st = { pages: [], keys: new Set(), stPage: 0, stMore: true, stCount: 0, stId: undefined, cpIds: null, cpPos: 0, dups: 0 };
+    st = { pages: [], keys: new Set(), titles: new Set(), yfTitles: new Set(), stPage: 0, stMore: true, stCount: 0, stId: undefined, cpIds: null, cpPos: 0, dups: 0 };
     merged.set(key, st);
   }
   while (st.pages.length < page) {
@@ -389,7 +396,16 @@ async function nextAuthorPage(st, n, dynasty) {
   })();
   const [sr, cr] = await Promise.allSettled([stTask, cpTask]);
   const out = [];
-  const add = (p) => { const k = cpKey(p); if (st.keys.has(k)) { st.dups++; return; } st.keys.add(k); out.push(p); };
+  const add = (p) => {
+    const k = cpKey(p);
+    // 全唐诗把乐府诗另收一份，题目带「相和歌辞」「杂曲歌辞」之类的前缀，文字略有出入（如《相和歌辞 蜀道难》与《蜀道难》）：按去掉前缀的题目再去一次重
+    const { title, yuefu } = yuefuTitle(p.title);
+    const tk = simp(p.author) + "|" + title;
+    const dup = st.keys.has(k) || (yuefu ? st.titles.has(tk) : st.yfTitles.has(tk));
+    if (dup) { st.dups++; return; }
+    st.keys.add(k); st.titles.add(tk); if (yuefu) st.yfTitles.add(tk);
+    out.push(p);
+  };
   if (cr.status === "fulfilled") { cr.value.list.forEach(add); st.cpPos += cr.value.ids.length; }
   else if (firstTime) st.cpIds = st.cpIds || [];
   if (sr.status === "fulfilled" && sr.value) {
@@ -416,6 +432,32 @@ export async function authorInfo(name, dynasty = "") {
     const a = (dynasty && list.find((x) => x.dynasty === simp(dynasty))) || list[0];
     return a ? { name: a.name, dynasty: a.dynasty || "", birth: a.birthYear || "", death: a.deathYear || "" } : null;
   } catch { return null; }
+}
+
+/** 按全唐诗 / 全宋诗编号取诗（足迹地图、学习列表、分享链接用） */
+export const cpPoems = (ids) => cp.poems(ids);
+/** 诗名开头检索全唐诗 / 全宋诗的本地索引，返回编号（学习列表「粘贴诗名」用） */
+export const cpTitleIds = (q, limit) => cp.titleIds(q, limit);
+
+const hanStr = (s) => Array.from(String(s || "")).filter((c) => /[\u3400-\u9fff]/.test(c)).join("");
+/** 首句开头大致对得上（异文、繁简差一两个字也算） */
+export function firstLike(lines, hint) {
+  const h = Array.from(hanStr(simp(hint)));
+  if (!h.length) return true;
+  const x = Array.from(hanStr(simp((lines || []).join("")))).slice(0, h.length);
+  return h.filter((c, i) => x[i] === c).length >= Math.max(2, h.length * 0.6);
+}
+/** 按 诗名 + 作者 + 首句 在诗库里认出一首诗（宋词等不在本站索引里的作品）：先搜诗名，再搜「作者 词牌」 */
+export async function findPoem({ t, a, f = "", q = "" }) {
+  const base = String(q || t).split("·")[0];
+  const tries = [...new Set([q || t, a ? `${a} ${base}` : "", base])].filter(Boolean);
+  for (const k of tries) {
+    let r;
+    try { r = await search(k, 1); } catch { continue; }
+    const hit = (r.list || []).find((p) => (!a || simp(p.author) === simp(a)) && firstLike(p.lines, f));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** 唐诗三百首全文（本站托管，不请求接口） */

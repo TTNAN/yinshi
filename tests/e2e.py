@@ -23,7 +23,7 @@ calls, errors, results = [], [], {}
 # 主诗库 poetry-api.snowtraces.com/v1（搜索至少 2 个字、/authors 名字→id、游标分页、随机直接 {data}）；
 # 备用 poetry.palemoky.com/api（随机 / 单字 / 3 字以上搜索）。MODE["api"] = "down" 时主诗库连不上，应自动改用备用
 MODE = {"api": "up"}
-# 分段运行：YINSHI_PART=base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
+# 分段运行：YINSHI_PART=base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）、v4、v5、v6（足迹地图、学习列表）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
 PART = os.environ.get("YINSHI_PART", "all")
 
 def mock(route):
@@ -724,8 +724,198 @@ with sync_playwright() as p:
         m.click("[data-reset-display]"); settle(m, 800); m.keyboard.press("Escape")
         results["m_after_reset"] = m.evaluate("[localStorage.getItem('yinshi:display'), getComputedStyle(document.getElementById('poemView')).getPropertyValue('--cs')]")
         m.context.close()
+    if PART in ("all", "v6"):
+        # ---- 第三批：诗人足迹地图、学习列表（多列表、粘贴诗名、练习、分享、打印）、旧诗单迁移、标签与印章正立 ----
+        V6 = {}
+        DAILYP = json.load(open(os.path.join(SITE, "poem", "daily-poems.json"), encoding="utf-8"))["poems"]
+        def chk(name, ok, val=""):
+            V6[name] = ("OK " if ok else "FAIL ") + str(val)[:160]
+        pg = new_page(b, 1440, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 2000)
+        # 标签与印章：不倾斜
+        tilt = pg.evaluate("""() => [...document.querySelectorAll('.tag-today,.tag-src,.seal-img')].map(e => { const s = getComputedStyle(e); return s.fontStyle + '/' + s.transform; })""")
+        chk("tags_upright", all(t in ("normal/none",) for t in tilt), tilt)
+        logo = open(os.path.join(SITE, "assets", "logo.svg"), encoding="utf-8").read() + open(os.path.join(SITE, "favicon.svg"), encoding="utf-8").read()
+        chk("logo_upright", "rotate(" not in logo and "skew" not in logo)
+        # 地图：从「诗单 → 分类」进入，选苏轼
+        before = len(calls)
+        pg.click("#btnBrowse"); settle(pg, 500)
+        pg.click('#browse [data-map="苏轼"]'); pg.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(pg, 700)
+        chk("map_lazy_files", pg.evaluate("performance.getEntriesByType('resource').filter(r => /map\\.js|footprints\\.json|rivers\\.json/.test(r.name)).length") == 3)
+        nseal = pg.locator("#mapv .mv-seal").count(); chk("map_su_seals", nseal == 12, nseal)
+        chk("map_su_route", pg.locator("#mapv .mv-route").count() == 1)
+        chk("map_no_border", pg.evaluate("document.querySelectorAll('#mapv path').length") > 10 and pg.locator("#mapv .mv-river").count() >= 10, pg.locator("#mapv .mv-river").count())
+        pg.screenshot(path=f"{OUT}/120-map-su-desktop.png")
+        # 在地图上点黄州的朱印
+        box = pg.locator('#mapv .mv-seal[data-place="huangzhou"] rect').bounding_box()
+        chk("map_tap_target", box and box["width"] >= 14, box)
+        pg.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); settle(pg, 400)
+        card = pg.inner_text("#mvCard")
+        chk("map_huangzhou_card", "黄州" in card and "1080" in card and "初到黄州" in card, card.replace("\n", " ")[:120])
+        pg.screenshot(path=f"{OUT}/121-map-su-huangzhou.png")
+        pg.click('#mvCard [data-mv-open]:has-text("初到黄州")')
+        pg.wait_for_function("() => document.getElementById('mapv').hidden && [...document.querySelectorAll('.poem-title .h')].map(x => x.textContent).join('').includes('初到黄州')", timeout=15000)
+        settle(pg, 800)
+        tt = pg.evaluate("[...document.querySelectorAll('.poem-title .h')].map(x => x.textContent).join('')")
+        chk("map_open_poem", "初到黄州" in tt, tt)
+        pg.screenshot(path=f"{OUT}/122-poem-from-map.png")
+        # 总览：点杭州
+        pg.goto(BASE + "#map"); pg.wait_for_selector("#mapv:not([hidden]) .mv-dot"); settle(pg, 700)
+        chk("map_overview_dots", pg.locator("#mapv .mv-dot").count() >= 40, pg.locator("#mapv .mv-dot").count())
+        pg.click('#mvList [data-mv-place="hangzhou"]'); settle(pg, 300)
+        card = pg.inner_text("#mvCard")
+        chk("map_overview_hangzhou", all(n in card for n in ("苏轼", "白居易", "陆游", "李清照")), card.replace("\n", " ")[:120])
+        pg.screenshot(path=f"{OUT}/123-map-overview.png")
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        chk("map_escape", pg.evaluate("document.getElementById('mapv').hidden"))
+        # 作者侧栏「足迹」：打开课本诗《早发白帝城》（李白）
+        pg.fill("#q", "早发白帝城"); settle(pg, 600)
+        pg.click("#results .res >> nth=0"); settle(pg, 1200)
+        pg.click('#sideAu [data-foot="李白"]'); pg.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(pg, 500)
+        chk("map_from_side", pg.locator('#mapv .mv-chips [aria-pressed="true"]').inner_text() == "李白" and pg.locator("#mapv .mv-seal").count() == 13)
+        pg.click('#mvList [data-mv-place="kuizhou"]'); settle(pg, 300)
+        chk("map_li_baidi", "早发白帝城" in pg.inner_text("#mvCard") and "759" in pg.inner_text("#mvCard"))
+        pg.keyboard.press("Escape"); settle(pg, 200)
+        pg.context.close()
+        # 夜读 + 繁體
+        pg = new_page(b, 1440, 1000)
+        pg.add_init_script("localStorage.setItem('yinshi:theme', JSON.stringify('ye')); localStorage.setItem('yinshi:lang', JSON.stringify('hant'));")
+        pg.goto(BASE + "#map=" + "%E8%BE%9B%E5%BC%83%E7%96%BE"); pg.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(pg, 1500)
+        chips = pg.inner_text("#mapv .mv-chips")
+        chk("map_hant", "蘇軾" in chips and "辛棄疾" in chips, chips.replace("\n", " "))
+        chk("map_dark_bg", pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor"), pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor"))
+        pg.click('#mvList [data-mv-place="jingkou"]'); settle(pg, 400)
+        pg.screenshot(path=f"{OUT}/124-map-xin-ye-hant.png")
+        pg.context.close()
+        # 手机
+        m = new_page(b, 390, 844, mobile=True)
+        m.goto(BASE + "#map=%E6%9D%9C%E7%94%AB"); m.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(m, 900)
+        m.screenshot(path=f"{OUT}/125-map-du-mobile.png")
+        m.tap('#mapv .mv-seal[data-place="kuizhou"] rect'); settle(m, 600)
+        chk("map_mobile_tap", "登高" in m.inner_text("#mvCard"))
+        tgt = m.evaluate("Math.min(...[...document.querySelectorAll('#mvList button, #mvCard button.mv-poem, .mv-chips .chip')].map(b => b.getBoundingClientRect().height))")
+        chk("map_mobile_targets_40", tgt >= 40, tgt)
+        m.screenshot(path=f"{OUT}/126-map-du-mobile-card.png", full_page=True)
+        m.context.close()
+        m = new_page(b, 390, 844, mobile=True)
+        m.add_init_script("localStorage.setItem('yinshi:theme', JSON.stringify('ye'));")
+        m.goto(BASE + "#map=%E6%9D%8E%E6%B8%85%E7%85%A7"); m.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(m, 900)
+        m.tap('#mvList [data-mv-place="jinhua"]'); settle(m, 500)
+        chk("map_mobile_ye", "武陵春" in m.inner_text("#mvCard"))
+        m.evaluate("document.getElementById('mapv').scrollTop = 0"); settle(m, 200)
+        m.screenshot(path=f"{OUT}/127-map-li-qingzhao-mobile-ye.png")
+        m.context.close()
+
+        # ---- 学习列表 ----
+        pg = new_page(b, 1440, 1000)
+        # 旧版：只有收藏（yinshi:fav），没有 yinshi:lists
+        old = {"静夜思|李白": {"p": {"title": "静夜思", "author": "李白", "dynasty": "唐", "lines": DAILYP[1]["lines"], "source": "daily", "dailyIndex": 1, "lang": "hans"}, "at": 1}}
+        pg.add_init_script("if (!localStorage.getItem('yinshi:lists')) localStorage.setItem('yinshi:fav', " + json.dumps(json.dumps(old, ensure_ascii=False)) + ");")
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
+        pg.click("#btnBrowse"); settle(pg, 300); pg.click('#browse [data-tab="mine"]'); settle(pg, 300)
+        mig = pg.inner_text("#browseBody .ls-list")
+        chk("lists_migrated", "我的诗单" in mig and "1 首" in mig, mig.replace("\n", " "))
+        chk("lists_fav_kept", "静夜思" in pg.evaluate("localStorage.getItem('yinshi:fav')"))
+        pg.screenshot(path=f"{OUT}/130-lists-overview.png")
+        # 新建列表 + 粘贴诗名
+        pg.fill("[data-ls-new] input", "周三作业"); pg.click("[data-ls-new] button"); settle(pg, 300)
+        pg.fill("[data-ls-paste] textarea", "春晓\n静夜思 李白\n不存在的诗名"); pg.click("[data-ls-paste] button[type=submit]")
+        pg.wait_for_selector(".ls-match", timeout=20000); settle(pg, 300)
+        mt = pg.inner_text(".ls-match")
+        chk("lists_paste_match", mt.count("✓") == 2 and mt.count("✗") == 1, mt.replace("\n", " "))
+        pg.screenshot(path=f"{OUT}/131-lists-paste-match.png")
+        pg.click("[data-ls-addmatched]"); settle(pg, 300)
+        chk("lists_two", pg.locator("#browseBody .ls-items li").count() == 2)
+        pg.click("#browseClose"); settle(pg, 200)
+        # 从搜索结果加入第三首
+        pg.fill("#q", "咏鹅"); settle(pg, 600)
+        pg.click("#results .res-add >> nth=0"); settle(pg, 300)
+        pg.screenshot(path=f"{OUT}/132-addlist-pop.png")
+        pg.click('#pop .al-item:has-text("周三作业")'); settle(pg, 300)
+        pg.keyboard.press("Escape"); pg.keyboard.press("Escape"); settle(pg, 300)
+        # 诗笺下方「加入列表」：当前诗加入「今日作业」
+        pg.click("#btnAddList"); settle(pg, 300)
+        chk("addlist_card_pop", pg.locator("#pop .al-item").count() >= 2)
+        pg.keyboard.press("Escape"); settle(pg, 200)
+        pg.click("#btnBrowse"); settle(pg, 300); pg.click('#browse [data-tab="mine"]'); settle(pg, 300)
+        if pg.locator("[data-ls-back]").count(): pg.click("[data-ls-back]"); settle(pg, 200)
+        pg.click('[data-ls-open]:has-text("周三作业")'); settle(pg, 300)
+        titles = pg.eval_on_selector_all("#browseBody .ls-items .res-t", "e => e.map(x => x.innerText)")
+        chk("lists_three", len(titles) == 3, titles)
+        pg.click('[data-li-mv$="|1"] >> nth=0'); settle(pg, 200)
+        titles2 = pg.eval_on_selector_all("#browseBody .ls-items .res-t", "e => e.map(x => x.innerText)")
+        chk("lists_reorder", titles2[0][1:] == titles[1][1:], titles2)
+        pg.screenshot(path=f"{OUT}/133-list-detail.png")
+        # 分享链接
+        pg.click("[data-ls-share]"); settle(pg, 300)
+        url = pg.input_value("[data-share-url]")
+        chk("share_url", "#list=" in url and "name=" in url, url)
+        pg.keyboard.press("Escape"); settle(pg, 200)
+        # 打印列表
+        pg.click("[data-ls-print]"); settle(pg, 300)
+        pg.evaluate("() => { window.print = () => { window.__printed = [document.body.className, document.getElementById('printList').innerText.slice(0, 80), document.querySelectorAll('#printList .pl-poem').length, document.querySelectorAll('#printList .pl-c i').length]; }; }")
+        pg.click("[data-pl-go]"); settle(pg, 1200)
+        pr = pg.evaluate("window.__printed")
+        chk("print_list", pr and pr[2] == 3 and pr[3] > 20 and "print-listing" in pr[0], pr)
+        pg.emulate_media(media="print"); settle(pg, 300)
+        pg.screenshot(path=f"{OUT}/134-print-list.png", full_page=True)
+        pg.emulate_media(media="screen"); pg.evaluate("document.body.classList.remove('print-listing')")
+        # 练习：四步全走，第一首「再练」排到队尾，其余「已会」
+        pg.click('[data-ls-practice]'); settle(pg, 300)
+        pg.screenshot(path=f"{OUT}/135-practice-setup.png")
+        pg.click("[data-pk-go]"); pg.wait_for_selector("#pbar:not([hidden]) .pb-steps"); settle(pg, 800)
+        prog = []
+        def run_poem(verdict):
+            steps = []
+            for i in range(4):
+                steps.append(pg.inner_text("#pbar .pb-steps li.on"))
+                if i < 3: pg.click("[data-pb-next]"); settle(pg, 500)
+            veil_seen = steps[2] == "背诵"
+            # 默写：按原诗填对所有空
+            title = pg.evaluate("[...document.querySelectorAll('.poem-title .h')].map(x => x.textContent).join('')")
+            d = next((p for p in DAILYP if re.sub(r"[（(].*?[）)]", "", p["t"]) in "".join(re.findall(r"[\u4e00-\u9fff]", title))), None)
+            keys = pg.eval_on_selector_all(".poem-body ruby.blank", "e => e.map(x => x.dataset.k)")
+            for k in keys:
+                li, ci = map(int, k.split(":"))
+                ch = list(d["lines"][li])[ci]
+                pg.click(f'.poem-body ruby[data-k="{k}"]'); settle(pg, 120)
+                pg.fill("#pop [data-dict-type] input", ch); pg.press("#pop [data-dict-type] input", "Enter"); settle(pg, 150)
+            tip = pg.inner_text("#pbar .pb-tip")
+            prog.append(pg.inner_text("#pbar [data-pb-prog]"))
+            pg.click(f'[data-pb-verdict="{verdict}"]'); settle(pg, 900)
+            return steps, veil_seen, len(keys), tip
+        s1 = run_poem("again")
+        chk("practice_steps", s1[0] == ["朗读", "跟读", "背诵", "默写"], s1[0])
+        chk("practice_dict_full", "答对" in s1[3] and str(s1[2]) in s1[3], s1[3])
+        chk("practice_requeue", "/ 4" in pg.inner_text("#pbar [data-pb-prog]"), pg.inner_text("#pbar [data-pb-prog]"))
+        pg.screenshot(path=f"{OUT}/136-practice-bar.png")
+        for _ in range(3): run_poem("ok")
+        pg.wait_for_selector(".pmodal .ps-list"); settle(pg, 300)
+        summ = pg.inner_text(".pmodal")
+        chk("practice_summary", "已会" in summ and "再练 1 次" in summ, summ.replace("\n", " ")[:150])
+        pg.screenshot(path=f"{OUT}/137-practice-summary.png")
+        pg.check(".pmodal [data-ps-sched]"); pg.click(".pmodal [data-ps-done]"); settle(pg, 500)
+        rec = pg.evaluate("Object.keys(JSON.parse(localStorage.getItem('yinshi:recite') || '{}')).length")
+        chk("practice_scheduled", rec == 3, rec)
+        pg.click("#btnBrowse"); settle(pg, 300); pg.click('#browse [data-tab="mine"]'); settle(pg, 200)
+        if pg.locator("[data-ls-back]").count(): pg.click("[data-ls-back]"); settle(pg, 200)
+        chk("practice_checkin", "今天已打卡" in pg.inner_text("#browseBody .ls-list"))
+        pg.context.close()
+        # 分享链接在另一台设备打开：确认后导入
+        m = new_page(b, 390, 844, mobile=True)
+        m.goto(url.replace(re.match(r"https?://[^/]+/", url).group(0), BASE)); m.wait_for_selector(".pmodal [data-imp-go]", timeout=15000); settle(m, 400)
+        m.screenshot(path=f"{OUT}/138-import-confirm-mobile.png")
+        m.click(".pmodal [data-imp-go]"); m.wait_for_selector("#browse:not([hidden]) .ls-items", timeout=20000); settle(m, 500)
+        imp = m.eval_on_selector_all("#browseBody .ls-items .res-t", "e => e.map(x => x.innerText)")
+        chk("share_roundtrip", len(imp) == 3 and [x[1:] for x in imp] == [x[1:] for x in titles2], imp)
+        chk("share_hash_cleared", "#list" not in m.url)
+        m.screenshot(path=f"{OUT}/139-imported-list-mobile.png")
+        m.context.close()
+        results["v6"] = V6
     b.close()
 
 results["api_calls"] = calls
 results["errors"] = errors
 print(json.dumps(results, ensure_ascii=False, indent=1))
+bad6 = [k for k, v in results.get("v6", {}).items() if v.startswith("FAIL")]
+if bad6: print("V6 FAIL:", bad6); sys.exit(1)

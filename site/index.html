@@ -6,8 +6,8 @@
 <title>吟诗 · 给古诗注上拼音</title>
 <meta name="description" content="吟诗：读一首带拼音的古诗。今日一诗、横排竖排田字格、飞花令、遮字背诵、课本读音修正。">
 <meta name="theme-color" content="#f3ede1">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon.svg?v=202610291521" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=202610291521">
 <link rel="preconnect" href="https://fonts.googleapis.cn">
 <link rel="preconnect" href="https://fonts.gstatic.cn" crossorigin>
 <script>
@@ -29,14 +29,14 @@
 })();
 </script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291429">
+<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291521">
 </head>
 <body>
 <a class="skip" href="#poem">跳到诗文</a>
 
 <header class="topbar" role="banner">
   <a class="brand" href="./" aria-label="吟诗 首页">
-    <img class="seal-img" src="assets/logo.svg" width="36" height="36" alt="" aria-hidden="true">
+    <img class="seal-img" src="assets/logo.svg?v=202610291521" width="36" height="36" alt="" aria-hidden="true">
     <span class="brand-name">吟诗</span>
   </a>
 
@@ -127,6 +127,7 @@
     <button type="button" class="st" id="btnRead" aria-pressed="false" aria-haspopup="dialog" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h3l4 3.5v-11L8 10zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg><span>朗读</span></button>
     <button type="button" class="st" id="btnDictate" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h4l10-10-4-4L5 15zM13 7l4 4"/></svg><span>默写</span></button>
     <button type="button" class="st" id="btnFav" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z"/></svg><span>收藏</span></button>
+    <button type="button" class="st" id="btnAddList" aria-haspopup="dialog" title="加入学习列表"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h10M5 12h10M5 17h6M17 14v6M14 17h6"/></svg><span>加入列表</span></button>
     <button type="button" class="st" id="btnRecited" aria-pressed="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg><span>背会了</span></button>
   </div>
   <!-- 宽屏：诗笺左右两侧；窄屏：诗笺下方可展开的两节（默认收起）。内容来自 data/poets.json、data/notes.json，按需载入 -->
@@ -195,23 +196,29 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
-<script src="poem/config.js?v=202610291429"></script>
+<script src="poem/config.js?v=202610291521"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
 <!-- 发版时把所有 ?v= 改成新的版本号（tools/bump-version.sh），避免浏览器拿旧缓存的脚本和样式拼在一起 -->
 <script type="importmap">
 {
   "imports": {
-    "./assets/js/api.js": "./assets/js/api.js?v=202610291429",
-    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291429",
-    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291429",
-    "./assets/js/main.js": "./assets/js/main.js?v=202610291429",
-    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291429",
-    "./assets/js/render.js": "./assets/js/render.js?v=202610291429",
-    "./assets/js/store.js": "./assets/js/store.js?v=202610291429",
-    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291429"
+    "./assets/js/api.js": "./assets/js/api.js?v=202610291521",
+    "./assets/js/cp.js": "./assets/js/cp.js?v=202610291521",
+    "./assets/js/lists.js": "./assets/js/lists.js?v=202610291521",
+    "./assets/js/map.js": "./assets/js/map.js?v=202610291521",
+    "./assets/js/practice.js": "./assets/js/practice.js?v=202610291521",
+    "./assets/js/study.js": "./assets/js/study.js?v=202610291521",
+    "./assets/js/themes.js": "./assets/js/themes.js?v=202610291521",
+    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291521",
+    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291521",
+    "./assets/js/main.js": "./assets/js/main.js?v=202610291521",
+    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291521",
+    "./assets/js/render.js": "./assets/js/render.js?v=202610291521",
+    "./assets/js/store.js": "./assets/js/store.js?v=202610291521",
+    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291521"
   }
 }
 </script>
-<script type="module" src="assets/js/main.js?v=202610291429"></script>
+<script type="module" src="assets/js/main.js?v=202610291521"></script>
 </body>
 </html>

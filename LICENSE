@@ -59,4 +59,9 @@ Poem data — snowtraces/poetry-source and 诗泉 palemoky/chinese-poetry-api
   https://poetry.palemoky.com (https://github.com/palemoky/chinese-poetry-api).
   No code from those projects is included in this repository.
 
+Natural Earth (rivers and lakes on the poets' footprint map)
+  site/data/rivers.json is simplified by tools/build-map.py from Natural Earth 1:10m
+  rivers_lake_centerlines and lakes. Made with Natural Earth — public domain.
+  https://www.naturalearthdata.com/
+
 Classical poem texts in site/poem/daily-poems.json are public-domain works.

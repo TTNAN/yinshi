@@ -2,7 +2,7 @@
 
 用法：python3 tests/live_browser.py [网址]      默认在本地起一个 http 服务器托管 site/
       YINSHI_CHROMIUM=/usr/bin/chromium 可指定浏览器；有 HTTPS_PROXY 环境变量时浏览器走该代理。
-检查：搜「李白」→ 诗人一节载入、加载更多；诗人浮层「更多 / 随机一首」；筛选 诗人=苏轼 随机；单字「月」；繁體。
+检查：搜「李白」→ 诗人一节载入、加载更多（乐府重收的诗不重复）；诗人浮层「更多 / 随机一首」；筛选 诗人=苏轼 随机；单字「月」；繁體；足迹地图打开一首宋词。
 """
 import json, os, sys, threading, functools, http.server
 from urllib.parse import urlparse
@@ -55,6 +55,7 @@ with sync_playwright() as p:
         pg.click("[data-more-author]"); pg.wait_for_function(f"() => document.querySelectorAll('#results .res').length > {n0}", timeout=40000); pg.wait_for_timeout(300)
     keys = pg.eval_on_selector_all("#results .res-sec-au ~ li .res", "e => e.map(x => x.innerText.replace(/\\s+/g, ''))")
     R["cp_libai"] = [len(keys), len(set(keys)), pg.locator("[data-more-author]").count(), pg.inner_text("#results .res-sec-au")]
+    R["cp_libai_shudao"] = [k[:20] for k in keys if "李白·" in k and k.split("李白·")[0].endswith("蜀道难")]      # 《相和歌辞 蜀道难》与《蜀道难》只列一次
     shot(pg, "live-cp-libai.png")
     pg.click("#results .res-sec-au ~ li .res >> nth=5"); pg.wait_for_timeout(1500)
     R["cp_libai_open"] = pg.inner_text(".poem-meta") + " / " + pg.inner_text(".poem-title").replace("\n", "")[:40]
@@ -134,6 +135,19 @@ with sync_playwright() as p:
     R["m_open"] = m.inner_text(".poem-meta")
     R["m_side_collapsed"] = m.evaluate("getComputedStyle(document.getElementById('sideAuBody')).display")
     shot(m, "live-m-poem.png")
+    # 足迹地图：苏轼 → 黄州 → 《念奴娇·赤壁怀古》（宋词，要在诗库里按 诗名 + 作者 + 首句 认出来）
+    mp = b.new_context(viewport={"width": 1280, "height": 900}, locale="zh-CN").new_page()
+    mp.on("console", lambda x: x.type == "error" and bad.append("map console " + x.text[:160]))
+    mp.goto(BASE + "#map=%E8%8B%8F%E8%BD%BC"); mp.wait_for_selector("#mapv:not([hidden]) .mv-seal", timeout=30000); mp.wait_for_timeout(600)
+    R["map_seals"] = mp.locator("#mapv .mv-seal").count()
+    mp.click('#mvList [data-mv-place="huangzhou"]'); mp.wait_for_timeout(300)
+    mp.click('#mvCard [data-mv-open]:has-text("念奴娇")')
+    try:
+        mp.wait_for_function("() => document.getElementById('mapv').hidden && [...document.querySelectorAll('.poem-title .h')].map(x => x.textContent).join('').includes('念奴娇')", timeout=40000)
+        R["map_poem"] = mp.evaluate("[...document.querySelectorAll('.poem-title .h')].map(x => x.textContent).join('')") + " / " + mp.inner_text(".poem-meta") + " / " + mp.inner_text(".poem-body")[:12].replace("\n", "")
+    except Exception as e:
+        R["map_poem"] = "FAIL " + str(e)[:80]
+    shot(mp, "live-map-poem.png")
     b.close()
 
 acao = [a for a in api if a[2] != "*"]
@@ -145,6 +159,7 @@ R["errors"] = bad
 print(json.dumps(R, ensure_ascii=False, indent=1))
 ok = (not bad and not acao and R["sushi_more"][1] > R["sushi_more"][0] and "poetry-api.snowtraces.com" in R["api_hosts"]
       and R["cp_libai"][0] >= 100 and R["cp_libai"][0] == R["cp_libai"][1] and "唐" in R["cp_libai_rand"] and "李白" in R["cp_libai_rand"]
-      and any("李白" in x for x in R["cp_title_静夜思"]) and any("杜甫" in x for x in R["cp_title_春望"]) and R["cp_dufu"][0] >= 40)
+      and any("李白" in x for x in R["cp_title_静夜思"]) and any("杜甫" in x for x in R["cp_title_春望"]) and R["cp_dufu"][0] >= 40
+      and len(R["cp_libai_shudao"]) <= 1 and R["map_seals"] == 12 and "念奴娇" in R["map_poem"] and "苏轼" in R["map_poem"])
 print("LIVE BROWSER:", "OK" if ok else "FAIL")
 sys.exit(0 if ok else 1)

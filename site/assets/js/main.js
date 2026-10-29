@@ -8,6 +8,7 @@ import * as fonts from "./fonts.js";
 import * as zh from "./zh.js";
 import * as themes from "./themes.js";
 import * as study from "./study.js";
+import * as lists from "./lists.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -27,6 +28,8 @@ const FALLBACK_DYN = api.DYN_ORDER;
 // 筛选面板「诗人」的常用候选
 const POETS = ["李白", "杜甫", "白居易", "王维", "苏轼", "李清照", "辛弃疾", "陆游", "杜牧", "李商隐", "孟浩然", "王安石", "刘禹锡", "柳宗元",
   "岑参", "王昌龄", "贺知章", "范仲淹", "欧阳修", "纳兰性德", "杨万里", "陶渊明", "韩愈", "高适", "王之涣", "李贺", "柳永", "晏殊", "秦观", "曹操"];
+// 有足迹地图的诗人（与 map.js、data/footprints.json 一致）
+const FOOT_POETS = ["李白", "杜甫", "苏轼", "白居易", "王维", "陆游", "辛弃疾", "李清照"];
 const LANGS = { hans: ["简体", "zh-Hans"], hant: ["繁體", "zh-Hant"] };
 const FALLBACK_TYPE = Object.keys(api.TYPES);   // 诗 / 词 / 曲
 
@@ -129,7 +132,8 @@ async function drawSide() {
   let auHTML = "";
   if (poet) {
     const meta = [poet.d, poet.y].filter(Boolean).join(" · ");
-    auHTML = `<p class="au-name">${D(s.author)}</p><p class="au-meta">${D(meta)}${poet.zi ? "<br>" + D(poet.zi) : ""}</p><p>${D(poet.bio)}</p>`
+    const foot = FOOT_POETS.includes(s.author) ? `<button type="button" class="au-foot" data-foot="${esc(s.author)}" title="看${D(s.author)}的足迹地图">足迹</button>` : "";
+    auHTML = `<p class="au-name">${D(s.author)}${foot}</p><p class="au-meta">${D(meta)}${poet.zi ? "<br>" + D(poet.zi) : ""}</p><p>${D(poet.bio)}</p>`
       + (poet.works && poet.works.length ? `<h4>代表作</h4><div class="au-works">${poet.works.map((w) => `<button type="button" data-side-search="${esc(w)}">${D(w)}</button>`).join("")}</div>` : "");
   } else if (s.author && !/佚名|无名氏|民歌|乐府/.test(s.author)) {
     auHTML = `<p class="au-name">${D(s.author)}</p><p class="au-meta">${D(s.dynasty)}</p><p class="muted">暂无这位诗人的介绍</p>`;
@@ -232,6 +236,7 @@ function draw(animate = false) {
   drawTip(pz);
   syncStudy();
   drawSide();
+  document.dispatchEvent(new CustomEvent("yinshi:drawn"));
 }
 
 function glyphs(ann, lines) {
@@ -321,11 +326,11 @@ const itemKey = (p) => { const s = view(p).simp; return s.author + "|" + hanOnly
 function resItem(p, i, q, badge) {
   const d = view(p).disp;
   q = toDisp(q);
-  return `<li><button class="res" type="button" data-i="${i}">
+  return `<li class="res-li"><button class="res" type="button" data-i="${i}">
       <span class="res-t">${hl(d.title || "（无题）", q)}${badge ? `<span class="res-badge">${badge}</span>` : ""}</span>
       <span class="res-m">${esc(d.author)}${d.dynasty ? " · " + esc(d.dynasty) : ""}</span>
       <span class="res-l">${hl(firstLineWith(d, q), q)}</span>
-    </button></li>`;
+    </button><button class="res-add" type="button" data-add-i="${i}" title="加入学习列表" aria-label="把《${esc(d.title)}》加入学习列表">＋</button></li>`;
 }
 function renderResults() {
   const { q, local, remote, author } = state.search;
@@ -738,6 +743,8 @@ async function setLang(l) {
   document.querySelectorAll("#pop [data-lang]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lang === l)));
   if (state.poem) draw(false);
   if (!$("sheet").hidden) renderResults();
+  if (!$("browse").hidden) renderBrowse();
+  if (MAP && MAP.isOpen()) MAP.refresh();
   previewBehindSheet();
   toast(l === "hant" ? "已切换为繁体" : "已切换为简体", 1200);
 }
@@ -796,6 +803,7 @@ function bind() {
   $("btnMore").addEventListener("click", () => fullSearch(state.search.q, state.search.page + 1));
   $("results").addEventListener("click", (e) => {
     if (e.target.closest("[data-more-author]")) { moreAuthor(); return; }
+    const ad = e.target.closest("[data-add-i]"); if (ad) { const p = $("results")._items[+ad.dataset.addI]; if (p) addListPop(ad, view(p).simp); return; }
     const b = e.target.closest(".res"); if (!b) return;
     const p = $("results")._items[+b.dataset.i];
     if (p) setPoem(p, { hi: "" });
@@ -850,6 +858,7 @@ function bind() {
     if (next) { c.tabIndex = -1; next.tabIndex = 0; next.focus(); }
   });
   ["sideAu", "sideNote"].forEach((id) => $(id).addEventListener("click", (e) => {
+    const ft = e.target.closest("[data-foot]"); if (ft) { openMap({ poet: ft.dataset.foot }); return; }
     const w = e.target.closest("[data-side-search]");
     if (w) { const q = toDisp(w.dataset.sideSearch); $("q").value = q; openSheet(q); fullSearch(q); return; }
     if (e.target.closest(".side-toggle")) toggleSide($(id));
@@ -941,6 +950,8 @@ function bind() {
   document.addEventListener("keydown", (e) => {
     const typing = e.target.matches("input, textarea, [contenteditable]");
     if (e.key === "Escape") {
+      if (MODAL && !MODAL.hidden) { closeModal(); return; }
+      if (MAP && MAP.isOpen()) { MAP.close(); return; }
       if (!$("pop").hidden) { const a = popAnchor; closePop(); if (a) a.focus(); return; }
       if (!$("sheet").hidden) { closeSheet(); $("q").blur(); return; }
       if (!$("browse").hidden) { closeBrowse(); return; }
@@ -1140,19 +1151,11 @@ function renderBrowse() {
       const keys = ((kind === "g" ? C.grades : C.themes)[g] || []);
       list = `<ol class="results">${keys.map((k) => keyIndex.get(k)).filter((i) => i != null).map((i) => { browseItems.push(dailyPoem(i)); return poemBtn(browseItems[browseItems.length - 1], browseItems.length - 1); }).join("")}</ol>`;
     }
-    body.innerHTML = `<p class="b-h">按年级 <small>统编版小学课本，只收较确定的篇目</small></p><div class="chips">${chips(C.grades, "g")}</div>
+    const foot = `<p class="b-h">诗人足迹 <small>在山河图上看诗人走过的地方、在哪里写了哪首诗</small></p><div class="chips"><button class="chip" type="button" data-map="">${esc(toDisp("总览"))}</button>${FOOT_POETS.map((n) => `<button class="chip" type="button" data-map="${esc(n)}">${esc(toDisp(n))}</button>`).join("")}</div>`;
+    body.innerHTML = foot + `<p class="b-h">按年级 <small>统编版小学课本，只收较确定的篇目</small></p><div class="chips">${chips(C.grades, "g")}</div>
       <p class="b-h">按主题</p><div class="chips">${chips(C.themes, "t")}</div>${list}`;
   } else if (browseTab === "mine") {
-    const t = study.todayParts();
-    const rec = Object.entries(study.recites()).map(([k, r]) => ({ k, r, st: study.reciteState(k, t).state }))
-      .sort((a, b) => ({ due: 0, wait: 1, done: 2 }[a.st] - { due: 0, wait: 1, done: 2 }[b.st]));
-    const fav = Object.entries(study.favs()).sort((a, b) => b[1].at - a[1].at);
-    const lab = { due: "今天复习", wait: "", done: "已掌握" };
-    body.innerHTML = `<p class="b-h">背诵打卡 <small>背会后按 1、2、4、7、15 天提醒复习</small></p>
-      ${rec.length ? `<ol class="results">${rec.map(({ r, st }) => { browseItems.push(r.p); return poemBtn(r.p, browseItems.length - 1, st === "wait" ? `<span class="res-badge">${esc(r.next.slice(5).replace("-", "/"))} 复习</span>` : `<span class="res-badge${st === "due" ? " due" : ""}">${lab[st]}</span>`); }).join("")}</ol>` : `<p class="muted b-empty">读完一首，点诗笺下方的「背会了」开始打卡</p>`}
-      <p class="b-h">我的收藏</p>
-      ${fav.length ? `<ol class="results">${fav.map(([, f]) => { browseItems.push(f.p); return poemBtn(f.p, browseItems.length - 1); }).join("")}</ol>` : `<p class="muted b-empty">点诗笺下方的「收藏」把喜欢的诗放到这里</p>`}
-      <p class="b-note">收藏和打卡只存在这台设备的浏览器里，不需要账号。</p>`;
+    renderMine(body);
   } else {
     renderJielong(body);
   }
@@ -1217,10 +1220,272 @@ async function jlPick(i) {
   }
 }
 
+/* ---------------- 学习列表（我的诗单）：多个列表、粘贴诗名、练习、分享、打印 ---------------- */
+let listView = "", listEdit = false, listDelArm = "", matchRes = null, alPoem = null;
+const itemPoem = (it) => { const p = it.p; return p.source === "daily" && p.dailyIndex != null && DAILY[p.dailyIndex] ? dailyPoem(p.dailyIndex) : { ...p }; };
+function renderMine(body) {
+  const l = listView && lists.get(listView);
+  if (l) { renderListDetail(body, l); return; }
+  listView = "";
+  const t = study.todayParts();
+  const L = lists.all();
+  const card = (l, i) => {
+    const last = Object.keys(l.log || {}).sort().pop();
+    const meta = [`${l.items.length} 首`, last === t.ymd ? `<span class="ls-done">今天已打卡</span>` : last ? `上次练习 ${last.slice(5).replace("-", "/")}` : ""].filter(Boolean).join(" · ");
+    return `<li class="ls-card"><button class="ls-open" type="button" data-ls-open="${esc(l.id)}"><b>${esc(toDisp(l.name))}</b><small>${meta}</small></button>
+      <span class="ls-acts"><button type="button" class="ls-mv" data-ls-mv="${esc(l.id)}|-1" aria-label="上移" ${i ? "" : "disabled"}>↑</button><button type="button" class="ls-mv" data-ls-mv="${esc(l.id)}|1" aria-label="下移" ${i < L.length - 1 ? "" : "disabled"}>↓</button>
+      <button type="button" class="btn solid ls-go" data-ls-practice="${esc(l.id)}" ${l.items.length ? "" : "disabled"}>练习</button></span></li>`;
+  };
+  const rec = Object.entries(study.recites()).map(([k, r]) => ({ k, r, st: study.reciteState(k, t).state }))
+    .sort((a, b) => ({ due: 0, wait: 1, done: 2 }[a.st] - { due: 0, wait: 1, done: 2 }[b.st]));
+  const lab = { due: "今天复习", wait: "", done: "已掌握" };
+  body.innerHTML = `<p class="b-h">学习列表 <small>按列表定向练习，比如今天的作业</small></p>
+    <ol class="ls-list">${L.map(card).join("")}</ol>
+    <div class="ls-new"><form class="pop-row" data-ls-new><input type="text" maxlength="24" placeholder="新列表的名字" aria-label="新列表的名字"><button class="btn ghost" type="submit">新建</button></form>
+      <button class="btn ghost ls-hw" type="button" data-ls-hw>＋ ${esc(lists.homeworkName(t.ymd))}</button></div>
+    <p class="b-h">背诵打卡 <small>背会后按 1、2、4、7、15 天提醒复习</small></p>
+    ${rec.length ? `<ol class="results">${rec.map(({ r, st }) => { browseItems.push(r.p); return poemBtn(r.p, browseItems.length - 1, st === "wait" ? `<span class="res-badge">${esc(r.next.slice(5).replace("-", "/"))} 复习</span>` : `<span class="res-badge${st === "due" ? " due" : ""}">${lab[st]}</span>`); }).join("")}</ol>` : `<p class="muted b-empty">读完一首，点诗笺下方的「背会了」开始打卡</p>`}
+    <p class="b-note">列表、收藏和打卡只存在这台设备的浏览器里，不需要账号。点诗笺下方的「收藏」会放进「我的诗单」。</p>`;
+}
+function renderListDetail(body, l) {
+  const D = (x) => esc(toDisp(x || ""));
+  const title = listEdit
+    ? `<form class="pop-row ls-rename" data-ls-rename><input type="text" maxlength="24" value="${D(l.name)}" aria-label="列表名字"><button class="btn solid" type="submit">保存</button><button class="btn text" type="button" data-ls-edit>取消</button></form>`
+    : `<h3 class="ls-h">${D(l.name)}</h3><button class="btn text" type="button" data-ls-edit>改名</button>`;
+  const match = matchRes && matchRes.id === l.id ? `<ol class="ls-match">${matchRes.rows.map((r) => r.p
+      ? `<li class="ok"><i>✓</i><b>${D(r.p.title)}</b><small>${D(r.p.author)} · ${r.src}${r.dup ? " · 已在列表里" : ""}</small></li>`
+      : `<li class="no"><i>✗</i><b>${D(r.q)}</b><small>没找到，换个写法或加上作者试试</small></li>`).join("")}</ol>
+      ${matchRes.rows.some((r) => r.p && !r.dup) ? `<button class="btn solid" type="button" data-ls-addmatched>加入 ${matchRes.rows.filter((r) => r.p && !r.dup).length} 首</button>` : ""}` : "";
+  body.innerHTML = `<button class="btn text ls-back" type="button" data-ls-back>‹ 全部列表</button>
+    <div class="ls-title">${title}</div>
+    <div class="ls-tools"><button class="btn solid" type="button" data-ls-practice="${esc(l.id)}" ${l.items.length ? "" : "disabled"}>开始练习</button>
+      <button class="btn ghost" type="button" data-ls-share ${l.items.length ? "" : "disabled"}>分享链接</button>
+      <button class="btn ghost" type="button" data-ls-print ${l.items.length ? "" : "disabled"}>打印列表</button>
+      ${l.id !== lists.MINE ? `<button class="btn text ls-del" type="button" data-ls-del>${listDelArm === l.id ? "确认删除？" : "删除列表"}</button>` : ""}</div>
+    <p class="b-h">添加诗 <small>每行一个诗名，可以带作者</small></p>
+    <form class="ls-paste" data-ls-paste><textarea rows="4" placeholder="粘贴或输入诗名，例如：&#10;春晓&#10;静夜思 李白&#10;李白《赠汪伦》" aria-label="诗名"></textarea>
+      <div class="pop-row"><button class="btn ghost" type="submit">匹配诗名</button><small class="muted">也可以在搜索结果里点「＋」</small></div></form>
+    ${match}
+    <p class="b-h">${l.items.length} 首</p>
+    ${l.items.length ? `<ol class="results ls-items">${l.items.map((it, i) => { browseItems.push(itemPoem(it)); const d = view(it.p).disp;
+      return `<li class="res-li"><button class="res" type="button" data-bp="${browseItems.length - 1}"><span class="res-t"><span class="ls-n">${i + 1}</span>${esc(d.title)}</span><span class="res-m">${esc(d.author)}</span><span class="res-l">${esc(d.lines[0] || "")}</span></button>
+        <span class="ls-iacts"><button type="button" data-li-mv="${esc(it.k)}|-1" aria-label="上移" ${i ? "" : "disabled"}>↑</button><button type="button" data-li-mv="${esc(it.k)}|1" aria-label="下移" ${i < l.items.length - 1 ? "" : "disabled"}>↓</button><button type="button" data-li-del="${esc(it.k)}" aria-label="移出列表">×</button></span></li>`; }).join("")}</ol>`
+      : `<p class="muted b-empty">还没有诗。在上面粘贴诗名，或者在搜索结果、诗笺下方点「加入列表」。</p>`}`;
+}
+/** 粘贴的诗名 → 课本 72 首 + 全唐诗 / 全宋诗诗名索引（本站托管）；都没有时再问诗库 */
+async function matchTitles(text) {
+  const rows = [];
+  for (const q of lists.parseTitles(toSimp(text))) {
+    const tries = [{ t: q.t, a: q.a }];
+    if (q.a && q.raw !== q.t) tries.push({ t: q.raw, a: "" });
+    let hit = null;
+    for (const x of tries) {
+      const bt = baseTitle(x.t);
+      const i = DAILY.findIndex((d) => (baseTitle(d.t) === bt || d.t === x.t) && (!x.a || d.a === x.a));
+      if (i >= 0) { hit = { p: dailyPoem(i), src: "课本" }; break; }
+      try {
+        const ids = await api.cpTitleIds(x.t, 8);
+        if (ids.length) {
+          const ps = await api.cpPoems(ids.slice(0, 8));
+          const norm = (t) => api.yuefuTitle(t).title.replace(/[其之]?[一二三四五六七八九十]+$/, "");
+          const p = ps.find((p) => norm(p.title) === norm(x.t) && (!x.a || p.author === x.a)) || (!x.a && ps.find((p) => norm(p.title) === norm(x.t)));
+          if (p) { hit = { p, src: p.dynasty === "宋" ? "宋诗" : "唐诗" }; break; }
+        }
+      } catch { /* 索引或正文取不到 */ }
+    }
+    if (!hit) {
+      try { const p = await api.findPoem({ t: q.t, a: q.a }) || (q.a && q.raw !== q.t ? await api.findPoem({ t: q.raw, a: "" }) : null); if (p) hit = { p: view(p).simp, src: "诗库" }; } catch { /* 诗库连不上 */ }
+    }
+    rows.push(hit ? { q: q.raw, ...hit } : { q: q.raw });
+  }
+  return rows;
+}
+function practicePop(anchor, id) {
+  closePop();
+  const steps = store.get("practiceSteps", ["read", "follow", "veil", "dict"]);
+  const names = { read: "朗读", follow: "看拼音跟读", veil: "遮字背诵", dict: "填空默写" };
+  const l = lists.get(id); if (!l) return;
+  openPop(`<h3><span>开始练习</span><small>${esc(toDisp(l.name))} · ${l.items.length} 首</small></h3>
+    <p class="pop-note">每首诗按顺序走这几步，最后选「已会」或「再练」（再练的排到最后再来一遍）</p>
+    <div class="pchks pk-steps">${Object.entries(names).map(([k, n], i) => `<label class="pchk"><input type="checkbox" data-pk-step="${k}" ${steps.includes(k) ? "checked" : ""}> ${i + 1}. ${n}</label>`).join("")}</div>
+    <label class="pchk"><input type="checkbox" data-pk-sched ${store.get("practiceSched", false) ? "checked" : ""}> 练完把已会的诗加入背诵复习</label>
+    <div class="pop-row"><button class="btn solid" type="button" data-pk-go="${esc(id)}">开始</button></div>`, anchor, { sheetOnMobile: true, cls: "pop-practice" });
+}
+let PRACTICE = null;
+async function startPractice(id) {
+  const pop = $("pop");
+  const steps = [...pop.querySelectorAll("[data-pk-step]")].filter((x) => x.checked).map((x) => x.dataset.pkStep);
+  const sched = !!(pop.querySelector("[data-pk-sched]") || {}).checked;
+  if (!steps.length) { toast("至少选一步"); return; }
+  store.set("practiceSteps", steps); store.set("practiceSched", sched);
+  const l = lists.get(id); if (!l || !l.items.length) return;
+  closePop(); closeBrowse();
+  try { PRACTICE = PRACTICE || await import("./practice.js"); } catch { toast("练习模块没有载入，请检查网络"); return; }
+  await PRACTICE.start(PCTX, l, { steps, schedule: sched });
+}
+const dictStatus = () => {
+  if (!state.dict) return null;
+  const total = state.dict.blanks.size, done = Object.keys(state.dict.answers).length;
+  const ok = Object.entries(state.dict.answers).filter(([k, v]) => (findCell(k) || {}).ch === v).length;
+  return { total, done, ok };
+};
+const PCTX = {
+  disp: (s) => toDisp(s), toast: (m, ms) => toast(m, ms), modal: (h, c) => modal(h, c), closeModal: () => closeModal(),
+  openItem: async (it) => { setPoem(itemPoem(it), { focus: false }); },
+  setVeil: (on) => { if (state.view.veil !== on) setVeil(on); },
+  setPinyin: (on) => { if (state.view.pinyin !== on) setPinyin(on); },
+  startDict: () => { if (!state.dict) toggleDictation(); },
+  endDict: () => { if (state.dict) { state.dict = null; draw(false); } },
+  dictStatus,
+  ttsOk: () => !$("btnRead").hidden,
+  speakAll: () => { if (!$("btnRead").hidden) speak("all"); },
+  stopSpeak: () => { study.stopSpeak(); setSpeakingUI(false); },
+  checkIn: (p) => study.checkIn(pkey(p), p).changed,
+  logPractice: (id, rec) => lists.logPractice(id, study.todayParts().ymd, rec),
+  onEnd: () => syncStudy(),
+};
+/** 「加入列表」：从诗笺或搜索结果 */
+function addListPop(anchor, p) {
+  if (popAnchor === anchor) { closePop(); return; }
+  closePop();
+  alPoem = p;
+  drawAddList(anchor);
+}
+function drawAddList(anchor) {
+  const p = alPoem, k = lists.keyOf(p), t = study.todayParts();
+  const hw = lists.homeworkName(t.ymd);
+  openPop(`<h3><span>加入学习列表</span><small>${esc(toDisp(baseTitle(p.title)))}</small></h3>
+    <div class="al-list">${lists.all().map((l) => { const on = lists.has(l.id, k); return `<button type="button" class="al-item" data-al-toggle="${esc(l.id)}" aria-pressed="${on}"><i>${on ? "✓" : "＋"}</i>${esc(toDisp(l.name))}<small>${l.items.length} 首</small></button>`; }).join("")}</div>
+    ${lists.all().some((l) => l.name === hw) ? "" : `<button type="button" class="btn text al-hw" data-al-hw>＋ 新建「${esc(hw)}」并加入</button>`}
+    <form class="pop-row" data-al-new><input type="text" maxlength="24" placeholder="新列表的名字" aria-label="新列表的名字"><button class="btn ghost" type="submit">新建并加入</button></form>`, anchor, { sheetOnMobile: true, cls: "pop-addlist" });
+}
+function alToggle(id) {
+  const p = alPoem, k = lists.keyOf(p), l = lists.get(id); if (!l) return;
+  if (lists.has(id, k)) { lists.drop(id, k); toast(`已从「${toDisp(l.name)}」移出`, 1400); }
+  else { lists.add(id, p); toast(`已加入「${toDisp(l.name)}」`, 1400); }
+  const anchor = popAnchor; closePop(); if (anchor) { drawAddList(anchor); }
+  syncStudy();
+}
+function sharePop(anchor, l) {
+  closePop();
+  const url = location.origin + location.pathname + lists.shareHash(l);
+  openPop(`<h3><span>分享列表</span><small>${esc(toDisp(l.name))} · ${l.items.length} 首</small></h3>
+    <p class="pop-note">把链接发给孩子或学生，对方打开后确认即可导入。链接里只有诗的编号和列表名，不含任何个人记录。</p>
+    <div class="pop-row"><input type="text" readonly value="${esc(url)}" data-share-url aria-label="分享链接"><button class="btn solid" type="button" data-share-copy>复制</button></div>
+    ${navigator.share ? `<div class="pop-row"><button class="btn ghost" type="button" data-share-native>用系统分享…</button></div>` : ""}`, anchor, { sheetOnMobile: true, cls: "pop-share" });
+}
+const PLIST_DEFAULT = { py: true, big: false, yi: false, ci: false };
+function printListPop(anchor, l) {
+  closePop();
+  const o = Object.assign({}, PLIST_DEFAULT, store.get("printListOpts", {}));
+  const box = (k, label) => `<label class="pchk"><input type="checkbox" data-plopt="${k}" ${o[k] ? "checked" : ""}> ${label}</label>`;
+  openPop(`<h3><span>打印列表</span><small>${esc(toDisp(l.name))} · ${l.items.length} 首</small></h3>
+    <div class="pchks">${box("py", "拼音")}${box("big", "大字")}${box("yi", "译文")}${box("ci", "注释")}</div>
+    <p class="pop-note">每首诗依次排在 A4 纸上；译文、注释只有收录了赏析的诗才有。</p>
+    <div class="pop-row"><button class="btn solid" type="button" data-pl-go>打印</button></div>`, anchor, { sheetOnMobile: true, cls: "pop-print" });
+}
+async function doPrintList(l) {
+  closePop();
+  const o = Object.assign({}, PLIST_DEFAULT, store.get("printListOpts", {}));
+  try { await loadSide(); } catch { /* 没有赏析数据：只印诗 */ }
+  let box = $("printList");
+  if (!box) { box = document.createElement("div"); box.id = "printList"; box.className = "print-list"; document.body.appendChild(box); }
+  const ann = { textbook: state.settings.textbook, recite: state.settings.recite, overrides: {} };
+  box.innerHTML = `<h1 class="pl-h">${esc(toDisp(l.name))}</h1>` + l.items.map((it, i) => {
+    const p = itemPoem(it), { disp, simp } = view(p);
+    const lines = glyphs(annotate(simp.lines, ann), disp.lines);
+    const n = noteFor(p);
+    const ex = [o.yi && n && n.yi ? `<h4>译文</h4><p>${esc(toDisp(n.yi))}</p>` : "", o.ci && n && n.ci ? `<h4>注释</h4><p>${esc(Object.entries(n.ci).map(([w, m]) => `${toDisp(w)}：${toDisp(m)}`).join("；"))}</p>` : ""].join("");
+    return `<section class="pl-poem"><h2><span class="pl-n">${i + 1}</span>${esc(splitTitle(disp.title).main)}</h2><p class="pl-meta">${esc([disp.dynasty, disp.author].filter(Boolean).join(" · "))}</p>
+      ${lines.map((cells) => `<p class="pl-line">${cells.map((c) => c.han ? `<span class="pl-c"><i>${esc(c.py)}</i><b>${esc(c.ch)}</b></span>` : `<span class="pl-c pl-p"><i></i><b>${esc(c.ch)}</b></span>`).join("")}</p>`).join("")}${ex ? `<div class="pl-ex">${ex}</div>` : ""}</section>`;
+  }).join("");
+  document.body.classList.add("print-listing");
+  document.body.classList.toggle("print-nopy", !o.py);
+  document.body.classList.toggle("print-big", !!o.big);
+  await fonts.ready(box.textContent);
+  window.print();
+}
+/* ---------------- 通用确认框 ---------------- */
+let MODAL = null;
+function modal(html, cls = "") {
+  if (!MODAL) {
+    MODAL = document.createElement("div");
+    MODAL.className = "modal-wrap"; MODAL.hidden = true;
+    MODAL.innerHTML = `<div class="modal-scrim"></div><div class="pop pmodal" role="dialog" aria-modal="true"></div>`;
+    document.body.appendChild(MODAL);
+    MODAL.querySelector(".modal-scrim").addEventListener("click", () => closeModal());
+  }
+  const box = MODAL.querySelector(".pmodal");
+  box.className = "pop pmodal " + cls; box.innerHTML = html; box.onclick = null;
+  MODAL.hidden = false;
+  const f = box.querySelector("button.solid"); if (f) f.focus({ preventScroll: true });
+  return box;
+}
+function closeModal() { if (MODAL) { MODAL.hidden = true; MODAL.querySelector(".pmodal").innerHTML = ""; } }
+/* ---------------- 分享链接导入 · 足迹地图深链（#list=… / #map=苏轼） ---------------- */
+async function resolveRef(r) {
+  const x = lists.parseRef(r); if (!x) return null;
+  if (x.d != null) return DAILY[x.d] ? dailyPoem(x.d) : null;
+  if (x.c != null) { const ps = await api.cpPoems([x.c]); return ps[0] || null; }
+  const i = DAILY.findIndex((d) => baseTitle(d.t) === baseTitle(x.t) && (!x.a || d.a === x.a));
+  if (i >= 0) return dailyPoem(i);
+  const p = await api.findPoem({ t: x.t, a: x.a, f: x.f });
+  return p ? view(p).simp : null;
+}
+function clearHash() { history.replaceState(null, "", location.pathname + location.search); }
+async function handleHash() {
+  const h = location.hash;
+  const m = h.match(/^#map(?:=(.*))?$/);
+  if (m) { clearHash(); openMap({ poet: m[1] ? decodeURIComponent(m[1]) : "" }); return; }
+  const sh = lists.parseHash(h);
+  if (!sh) return;
+  clearHash();
+  const box = modal(`<h3><span>收到一份诗单</span></h3>
+    <p class="ps-lead">「${esc(toDisp(sh.name))}」，共 ${sh.refs.length} 首。导入到我的学习列表吗？</p>
+    <p class="pop-note">导入后只保存在这台设备上，可以随时删除。</p>
+    <div class="pop-row"><button class="btn solid" type="button" data-imp-go>导入</button><button class="btn text" type="button" data-imp-no>不用了</button></div>`, "pimport");
+  box.onclick = async (e) => {
+    if (e.target.closest("[data-imp-no]")) { closeModal(); return; }
+    const go = e.target.closest("[data-imp-go]"); if (!go) return;
+    go.disabled = true; go.textContent = "正在取诗…";
+    const got = await Promise.all(sh.refs.map((r) => resolveRef(r).catch(() => null)));
+    const poems = got.filter(Boolean);
+    closeModal();
+    if (!poems.length) { toast("没能取到这些诗，请检查网络后再打开链接"); return; }
+    const l = lists.importList(sh.name, poems);
+    toast(poems.length === sh.refs.length ? `已导入「${toDisp(l.name)}」，${poems.length} 首` : `已导入 ${poems.length} 首，${sh.refs.length - poems.length} 首没有找到`, 2600);
+    listView = l.id; matchRes = null;
+    openBrowse("mine");
+  };
+}
+let MAP = null;
+async function openMap(opts = {}) {
+  closePop(); closeBrowse(); closeSheet();
+  try {
+    MAP = MAP || await import("./map.js");
+    await MAP.open({ disp: (s) => toDisp(s), VQ, openPoem: openFootPoem }, opts);
+  } catch (e) { console.warn(e); toast("足迹地图没有载入，请检查网络"); }
+}
+/** 地图上点诗名：课本诗直接打开；全唐诗 / 全宋诗按编号取；宋词等在诗库里按 诗名 + 作者 + 首句 认出来 */
+async function openFootPoem(e, poet) {
+  let p = null;
+  try {
+    if (e.d != null && DAILY[e.d]) p = dailyPoem(e.d);
+    else if (e.c != null) { toast("正在取诗…", 1200); p = (await api.cpPoems([e.c]))[0] || null; }
+    if (!p) { toast(`正在诗库里找《${toDisp(e.t)}》…`, 1600); p = await api.findPoem({ t: e.t, a: poet, f: e.f || "", q: e.q || "" }); }
+  } catch { p = null; }
+  if (p) { setPoem(p); return true; }
+  const q = `${poet} ${String(e.q || e.t).split("·")[0]}`;
+  MAP.close();
+  toast("诗库里暂时没认出这首，先看看搜索结果", 2200);
+  $("q").value = toDisp(q); openSheet(toDisp(q)); fullSearch(toDisp(q));
+  return false;
+}
+
 function bindStudy() {
   $("btnRead").addEventListener("click", (e) => readPop(e.currentTarget));
   $("btnDictate").addEventListener("click", () => toggleDictation());
-  $("btnFav").addEventListener("click", () => { if (!state.poem) return; const on = study.toggleFav(pkey(state.poem), view(state.poem).simp); syncStudy(); toast(on ? "已收藏，在「诗单」里能找到" : "已取消收藏", 1600); });
+  $("btnFav").addEventListener("click", () => { if (!state.poem) return; const on = study.toggleFav(pkey(state.poem), view(state.poem).simp); lists.favChanged(pkey(state.poem), view(state.poem).simp, on); syncStudy(); toast(on ? "已收藏，在「诗单」里能找到" : "已取消收藏", 1600); });
   $("btnRecited").addEventListener("click", () => {
     if (!state.poem) return;
     const k = pkey(state.poem);
@@ -1234,11 +1499,59 @@ function bindStudy() {
   $("browseClose").addEventListener("click", () => closeBrowse());
   $("scrim").addEventListener("click", () => closeBrowse());
   $("browse").addEventListener("click", async (e) => {
-    const t = e.target.closest("[data-tab]"); if (t) { browseTab = t.dataset.tab; renderBrowse(); return; }
+    const t = e.target.closest("[data-tab]"); if (t) { browseTab = t.dataset.tab; if (browseTab !== "mine") listView = ""; renderBrowse(); return; }
+    const mp = e.target.closest("[data-map]"); if (mp) { openMap({ poet: mp.dataset.map }); return; }
+    // 学习列表
+    const lo = e.target.closest("[data-ls-open]"); if (lo) { listView = lo.dataset.lsOpen; listEdit = false; listDelArm = ""; matchRes = null; renderBrowse(); $("browseBody").scrollTop = 0; return; }
+    if (e.target.closest("[data-ls-back]")) { listView = ""; listEdit = false; matchRes = null; renderBrowse(); return; }
+    const lm = e.target.closest("[data-ls-mv]"); if (lm) { const [id, d] = lm.dataset.lsMv.split("|"); lists.move(id, +d); renderBrowse(); return; }
+    const lp = e.target.closest("[data-ls-practice]"); if (lp) { practicePop(lp, lp.dataset.lsPractice); return; }
+    if (e.target.closest("[data-ls-hw]")) {
+      const n = lists.homeworkName(study.todayParts().ymd);
+      const ex = lists.all().find((l) => l.name === n);
+      listView = (ex || lists.create(n)).id; matchRes = null; renderBrowse();
+      const ta = $("browseBody").querySelector("[data-ls-paste] textarea"); if (ta && !isMobile()) ta.focus();
+      return;
+    }
+    if (e.target.closest("[data-ls-edit]")) { listEdit = !listEdit; renderBrowse(); const i = $("browseBody").querySelector("[data-ls-rename] input"); if (i) i.select(); return; }
+    if (e.target.closest("[data-ls-del]")) {
+      if (listDelArm !== listView) { listDelArm = listView; renderBrowse(); return; }
+      const l = lists.get(listView); lists.remove(listView); listDelArm = ""; listView = ""; renderBrowse(); if (l) toast(`已删除「${toDisp(l.name)}」`, 1600); return;
+    }
+    const cur = listView && lists.get(listView);
+    if (cur && e.target.closest("[data-ls-share]")) { sharePop(e.target.closest("[data-ls-share]"), cur); return; }
+    if (cur && e.target.closest("[data-ls-print]")) { printListPop(e.target.closest("[data-ls-print]"), cur); return; }
+    const im = e.target.closest("[data-li-mv]"); if (im && cur) { const v = im.dataset.liMv, j = v.lastIndexOf("|"); lists.moveItem(cur.id, v.slice(0, j), +v.slice(j + 1)); renderBrowse(); return; }
+    const idl = e.target.closest("[data-li-del]"); if (idl && cur) { lists.drop(cur.id, idl.dataset.liDel); renderBrowse(); syncStudy(); return; }
+    if (cur && e.target.closest("[data-ls-addmatched]")) {
+      let n = 0; (matchRes ? matchRes.rows : []).forEach((r) => { if (r.p && !r.dup && lists.add(cur.id, r.p)) n++; });
+      matchRes = null; renderBrowse(); syncStudy(); toast(`已加入 ${n} 首`, 1600); return;
+    }
     const sel = e.target.closest("[data-bsel]"); if (sel) { browseSel = browseSel === sel.dataset.bsel ? "" : sel.dataset.bsel; renderBrowse(); return; }
     const bp = e.target.closest("[data-bp]"); if (bp) { const p = browseItems[+bp.dataset.bp]; if (p) { closeBrowse(); setPoem(p.source === "daily" && p.dailyIndex != null && DAILY[p.dailyIndex] ? dailyPoem(p.dailyIndex) : { ...p }); } return; }
     if (e.target.closest("[data-jl-start]")) { e.target.closest("[data-jl-start]").disabled = true; await jlStart(); return; }
     const jp = e.target.closest("[data-jl-pick]"); if (jp) { jlPick(+jp.dataset.jlPick); }
+  });
+  $("browse").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.matches("[data-ls-new]")) {
+      const v = f.querySelector("input").value.trim();
+      if (!v) { toast("先给列表起个名字"); f.querySelector("input").focus(); return; }
+      listView = lists.create(v).id; matchRes = null; renderBrowse(); return;
+    }
+    if (f.matches("[data-ls-rename]")) { lists.rename(listView, f.querySelector("input").value); listEdit = false; renderBrowse(); return; }
+    if (f.matches("[data-ls-paste]")) {
+      const text = f.querySelector("textarea").value;
+      if (!text.trim()) { toast("先粘贴或输入几个诗名"); return; }
+      const btn = f.querySelector("button[type=submit]"); btn.disabled = true; btn.textContent = "正在匹配…";
+      const id = listView;
+      const rows = await matchTitles(text);
+      const l = lists.get(id);
+      rows.forEach((r) => { if (r.p && l) r.dup = lists.has(id, lists.keyOf(r.p)); });
+      matchRes = { id, rows };
+      if (listView === id) renderBrowse();
+    }
   });
   $("cardTip").addEventListener("click", (e) => {
     if (e.target.closest("[data-dict-end]")) { state.dict = null; draw(false); }
@@ -1250,6 +1563,12 @@ function bindStudy() {
     if (e.target.closest("[data-read-all]")) { speak("all"); return; }
     const rl = e.target.closest("[data-read-line]"); if (rl) { speak(+rl.dataset.readLine); return; }
     if (e.target.closest("[data-do-print]")) { doPrint(); return; }
+    const pg = e.target.closest("[data-pk-go]"); if (pg) { startPractice(pg.dataset.pkGo); return; }
+    const at = e.target.closest("[data-al-toggle]"); if (at) { alToggle(at.dataset.alToggle); return; }
+    if (e.target.closest("[data-al-hw]")) { const n = lists.homeworkName(study.todayParts().ymd); const l = lists.all().find((x) => x.name === n) || lists.create(n); if (!lists.has(l.id, lists.keyOf(alPoem))) alToggle(l.id); return; }
+    if (e.target.closest("[data-share-copy]")) { const u = $("pop").querySelector("[data-share-url]"); copyText(u.value).then((ok) => toast(ok ? "链接已复制，发给对方即可" : "复制失败，请长按链接手动复制", 2000)); u.select(); return; }
+    if (e.target.closest("[data-share-native]")) { const u = $("pop").querySelector("[data-share-url]").value; navigator.share({ title: "吟诗 · 诗单", url: u }).catch(() => {}); return; }
+    if (e.target.closest("[data-pl-go]")) { const l = lists.get(listView); if (l) doPrintList(l); return; }
     if (e.target.closest("[data-do-export]")) { closePop(); $("btnImage").click(); }
   });
   $("pop").addEventListener("input", (e) => {
@@ -1258,13 +1577,22 @@ function bindStudy() {
   $("pop").addEventListener("change", (e) => {
     if (e.target.matches("[data-read-loop]")) store.set("readLoop", e.target.checked);
     if (e.target.matches("[data-popt]")) { const o = printOpts(); o[e.target.dataset.popt] = e.target.checked; store.set("printOpts", o); }
+    if (e.target.matches("[data-plopt]")) { const o = Object.assign({}, PLIST_DEFAULT, store.get("printListOpts", {})); o[e.target.dataset.plopt] = e.target.checked; store.set("printListOpts", o); }
   });
   $("pop").addEventListener("submit", (e) => {
+    if (e.target.matches("[data-al-new]")) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      const v = e.target.querySelector("input").value.trim();
+      if (!v) { toast("先给列表起个名字"); return; }
+      const l = lists.create(v); alToggle(l.id); return;
+    }
     if (!e.target.matches("[data-dict-type]")) return;
     e.preventDefault(); e.stopImmediatePropagation();
     dictAnswer($("pop").dataset.k, e.target.querySelector("input").value);
   }, true);
-  window.addEventListener("afterprint", () => { document.body.classList.remove("print-nopy", "print-big"); });
+  window.addEventListener("afterprint", () => { document.body.classList.remove("print-nopy", "print-big", "print-listing"); });
+  $("btnAddList").addEventListener("click", (e) => { if (state.poem) addListPop(e.currentTarget, view(state.poem).simp); });
+  window.addEventListener("hashchange", () => handleHash());
   study.ttsReady().then((ok) => { $("btnRead").hidden = !ok; });
 }
 
@@ -1302,6 +1630,7 @@ async function boot() {
   } catch { /* 分类数据没载入：照常轮换 */ }
   setPoem(dailyPoem(first), { focus: false, tag });
   if (tag) state.view.today = true, draw(false);
+  handleHash();
 }
 fonts.apply();
 themes.apply();
