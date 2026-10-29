@@ -21,7 +21,7 @@
 - **课本读音修正**（默认开）：`site/poem/poem-readings.json` 中 39 条按上下文片段匹配的修正，例如 朝辞白帝 zhāo、千里江陵一日还 huán、少小离家 shào、浑欲不胜簪 shēng。
 - **吟诵旧读**（默认关）：石径斜 xiá、鬓毛衰 cuī、一骑 jì 红尘、笼盖四野 yǎ 等传统读法。现行课本已不采用，所以只作可选项。
 - **找诗**
-  - 顶栏搜索：边打字边查内置课本精选；回车搜整个诗库，一个字起就能搜。输入 2–4 个字、像诗人名字时，同时按诗人搜索：结果分成「课本精选」「李白的诗（共 1863 首，可一直加载更多）」「诗名与诗句」三节。
+  - 顶栏搜索：边打字边查内置课本精选；回车搜整个诗库（诗名、诗人，两个字起）。输入 2–4 个字、像诗人名字时，同时按诗人列出作品：结果分成「课本精选」「某某的诗（可一直加载更多）」「诗名与诗句」三节。只输一个字（如「月」）时，列出课本里含这个字的诗，再从备用诗库随机挑几首含这个字的诗，并给出「飞花令」入口。
   - 诗人：诗笺上的作者名可以点，弹出「更多 李白 的诗」「随机一首 李白 的诗」。
   - 随机：可在「筛选」抽屉里限定朝代、体裁、诗人（输入框带候选，下面有常见诗人可一键选）；顶栏「随机」也沿用这些条件。
   - 飞花令：出一个字，随机来一首含这个字的诗，诗中该字以朱砂色标出。
@@ -29,28 +29,28 @@
 - **导出**：打印（只打印诗笺，干净 A4）、导出 PNG 图片（按屏幕版式逐字绘制，带落款小印）、复制带拼音文本（每行先拼音后汉字）。
 - **手机**：诗笺铺满屏幕，常用操作在底栏；搜索结果和飞花令为底部弹层。
 - **设置**（诗笺右上角）：
-  - 字体：宋（思源宋体，默认）/ 楷（霞鹜文楷）/ 黑（思源黑体）/ 仿宋（用系统自带仿宋）。只加载选中的那一种；思源字体走 `fonts.googleapis.cn`，按字分片下载。
+  - 字体：一格一种、名字用它自己的字形显示，共 8 种开源字体：仿宋（朱雀仿宋，默认）/ 宋体（思源宋体）/ 楷体（霞鹜文楷）/ 黑体（思源黑体）/ 小薇（站酷小薇）/ 毛笔（马善政楷书）/ 快乐（站酷快乐体）/ 行书（龙藏体）。只加载选中的那一种，并按字分片下载：朱雀仿宋由本站托管（`site/fonts/zhuque-fangsong/`，92 片），霞鹜文楷走 jsDelivr，其余走 `fonts.googleapis.cn`。后四种只收常用简体字，缺字（多为繁体）时退回宋体。以前选过字体的用户保留原来的选择。
   - 字号（小 / 中 / 大 / 特大）、拼音大小（小 / 中 / 大）、行距（紧凑 / 适中 / 宽松）；放大后一句放不下会在句内换行，不裁切。
   - 竖排方向：从右到左（传统）/ 从左到右；在横排、田字格下点它会直接切到竖排。
-  - 简繁：简体 / 繁體。繁体时向诗库请求 `lang=zh-Hant`，内置课本诗用 OpenCC 转成繁体；注音仍按简体计算（课本读音修正、自定义读音照常生效），再逐字换上繁体字形。导出图片、打印、复制文本都用当前字形。
+  - 简繁：简体 / 繁體。诗库返回简体，页面用 OpenCC 转成繁体（备用诗库直接请求 `lang=zh-Hant`）；注音仍按简体计算（课本读音修正、自定义读音照常生效），再逐字换上繁体字形。导出图片、打印、复制文本都用当前字形。
   - 以上都记在浏览器里，导出图片和打印同样生效；「恢复默认」一键还原。
 - **键盘**：`/` 搜索，`R` 随机，`Esc` 关闭弹层；诗笺内用方向键在字之间移动，回车改读音。
 
 ## 诗库来源与接口友好
 
-诗词数据来自「诗泉」（[palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)）的两个公共实例：
+浏览器直接请求两个公开接口（不经任何中转）：
 
-1. **主实例** [poetry.llmaix.com](https://poetry.llmaix.com/)（`/api/v1`）：单字搜索、按诗人搜索（`type=author`）、随机可按作者 / 朝代 / 体裁 / 单字筛选；按 IP 限流每秒 10 次。
-2. **备用实例** [poetry.palemoky.com](https://poetry.palemoky.com)（`/api`）：主实例连不上（网络错误、超时或 5xx）时自动改用，并记住 10 分钟。它的搜索至少要 3 个字，也不能按诗人列诗，这时页面会说明原因并给出飞花令、随机一首等去处。
+1. **主诗库** [snowtraces/poetry-source](https://github.com/snowtraces/poetry-source) 的公共接口 `https://poetry-api.snowtraces.com/v1`（Cloudflare Workers + D1，免 Key）：按诗名 / 诗人搜索（至少 2 个字，游标分页）、`/authors?q=` 由诗人名找到 id 后用 `/authors/:id/works` 列出全部作品、`/works/random` 随机（可按朝代、诗 / 词 / 曲、诗人筛选）。按 IP 限流每 60 秒 60 次。
+2. **备用** 诗泉（[palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)）的公共实例 [poetry.palemoky.com](https://poetry.palemoky.com)（`/api`）：主诗库连不上、5xx 或 429 时用于随机和 3 字以上搜索；单字搜索、飞花令（按字随机）也走这里。
 
 对接口尽量友好：
 
 - 页面加载时 **不发任何 API 请求**（今日一诗来自内置数据）；
 - 只有点「随机 / 飞花令 / 回车搜索 / 打开筛选」时才请求；
-- 搜索结果缓存 1 天、朝代与体裁缓存 7 天（内存 + localStorage）；
-- 每个实例单独节流：主实例每秒最多 4 次，备用实例 20 秒最多 5 次；收到 429 后冷却一会儿，期间给出提示，并用内置课本诗兜底。
+- 搜索与诗人作品缓存 1 天、诗人 id 缓存 30 天、朝代缓存 7 天（内存 + localStorage）；
+- 客户端排队节流：主诗库每分钟最多 50 次、3 秒内最多 6 次（低于接口的 60 次 / 分钟），备用 20 秒最多 5 次；收到 429 时按 `Retry-After`（读不到时 60 秒）冷却，期间给出提示并用内置课本诗兜底。
 
-> 已知数据情况（2026-10 实测）：繁体库比简体库少收一些诗（例如「陸游」繁体库只有 146 首，简体库 9000 多首），所以「某某的诗」列表固定取简体库、在页面里转成繁体；个别诗的朝代、体裁分类不准（如部分苏轼的诗标为唐）。
+> 已知数据情况（2026-10-29 实测）：主诗库目前几乎没有唐诗和宋诗（「李白」只有 9 首词，「杜甫」「王维」「孟浩然」0 首；苏轼 375 首、辛弃疾 630 首多为词）。所以按诗人随机、按条件随机在主诗库找不到时会自动改从备用诗库抽；「某某的诗」列表只能列出主诗库收录的作品。
 
 ## 部署到 Cloudflare Pages
 
@@ -69,21 +69,7 @@
 
 ## 切换诗词 API
 
-编辑 `site/poem/config.js` 里的 `SOURCES`：按顺序使用，前一个连不上就用下一个。自建实例（新版 `/api/v1`）只要把第一项的 `base` 改成你的地址：
-
-```js
-window.YINSHI_CONFIG = {
-  SOURCES: [
-    { name: "mine", base: "https://poetry.example.com/api/v1",
-      paths: { random: "/poems/random", search: "/poems/search", types: "/types", dynasties: "/dynasties" },
-      searchTypes: true, minSearch: 1, randomWrapped: false, rate: { windowMs: 1000, max: 4 }, cooldownMs: 15000, timeoutMs: 8000 },
-    // …备用实例
-  ],
-  PAGE_SIZE: 30, AUTHOR_PAGE_SIZE: 50
-};
-```
-
-自建实例见 [palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)（Docker 默认端口 1279），自建后基本不用担心限流。
+编辑 `site/poem/config.js`：`PRIMARY.base` 是主诗库地址（poetry-source 可自建，见其仓库 `api/DEPLOY_CLOUDFLARE.md`），`FALLBACK.base` 是诗泉实例地址（自建见 [palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)，Docker 默认端口 1279）。限流、超时、每页条数也都在这个文件里。
 
 ## 目录结构
 
@@ -95,8 +81,9 @@ window.YINSHI_CONFIG = {
 | `site/assets/js/reading.js` | 注音：pinyin-pro → 课本修正 → 吟诵旧读 → 用户自定义 |
 | `site/assets/js/render.js` | 诗笺渲染（`<ruby>` 逐字格）与自适应字号 |
 | `site/assets/js/exporter.js` | 导出 PNG（canvas）与带拼音文本 |
-| `site/assets/js/api.js` | 诗泉 API 客户端（主 / 备用实例自动切换、缓存、节流、429 冷却） |
+| `site/assets/js/api.js` | 诗库客户端（主诗库 snowtraces + 备用诗泉自动切换、游标分页、缓存、排队节流、429 冷却） |
 | `site/assets/js/zh.js` | 简繁转换（按需加载 OpenCC，逐字对齐） |
+| `site/assets/js/fonts.js` | 诗文字体（8 种，按需加载） |
 | `site/assets/js/store.js` | localStorage 封装 |
 | `site/poem/config.js` | API 配置 |
 | `site/poem/daily-poems.json` | 72 首小学必背（课本文本） |
@@ -104,9 +91,10 @@ window.YINSHI_CONFIG = {
 | `site/vendor/pinyin-pro-3.29.5.min.js` | 拼音引擎（npm 原版，未修改） |
 | `site/vendor/opencc-js-1.4.2/` | 简繁转换 opencc-js（npm 原版 ESM，未修改；只在切到繁体时加载） |
 | `tools/bump-version.sh` | 发版时更新 `index.html` 里脚本和样式的 `?v=` 版本号，避免浏览器混用新旧缓存 |
-| `site/fonts/` | 拼音字体 Noto Serif（拉丁 + 拉丁扩展子集） |
-| `tests/e2e.py` | Playwright 无头验收（用 `tests/fixtures/api.json` / `api-hant.json` 模拟两个诗库实例，不访问真实接口） |
-| `tests/live_api.py` | 真实接口检查：公共实例返回的结构是否和代码预期一致（会访问网络） |
+| `site/fonts/` | 拼音字体 Noto Serif（拉丁 + 拉丁扩展子集）；`zhuque-fangsong/` 朱雀仿宋分片网页字体（默认诗文字体） |
+| `tests/e2e.py` | Playwright 无头验收（用 `tests/fixtures/api.json` 模拟主诗库与备用诗库，不访问真实接口） |
+| `tests/live_api.py` | 真实接口检查：返回结构是否和代码预期一致，且跨域头 `Access-Control-Allow-Origin` 恰好一个（会访问网络） |
+| `tests/live_browser.py` | 真实浏览器联网检查：不拦截请求，页面跨域直连真实诗库（可传线上网址） |
 
 ### 修改读音修正表
 
@@ -117,7 +105,8 @@ window.YINSHI_CONFIG = {
 ```bash
 pip install playwright && python3 -m playwright install chromium
 python3 tests/e2e.py            # 截图输出到 tests/screens/；YINSHI_PART=base / v3 / visual 可分段运行
-python3 tests/live_api.py       # 检查真实接口
+python3 tests/live_api.py       # 检查真实接口与跨域头
+python3 tests/live_browser.py   # 真实浏览器直连诗库；也可 python3 tests/live_browser.py https://ttnan.github.io/yinshi/
 # 已装系统 Chromium 时：YINSHI_CHROMIUM=/usr/bin/chromium python3 tests/e2e.py
 ```
 
@@ -125,7 +114,7 @@ python3 tests/live_api.py       # 检查真实接口
 
 - 代码：MIT © 2026 Caesar (TTNAN)，见 [LICENSE](LICENSE)。
 - 拼音：[pinyin-pro](https://github.com/zh-lx/pinyin-pro)（MIT）。
-- 诗词数据：[诗泉 palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)，运行时通过它的公共实例 [poetry.llmaix.com](https://poetry.llmaix.com/) 与 [poetry.palemoky.com](https://poetry.palemoky.com) 的公开 API 获取，仓库不包含其代码。感谢两个实例的维护者。
+- 诗词数据：[snowtraces/poetry-source](https://github.com/snowtraces/poetry-source)（公共接口 poetry-api.snowtraces.com）与 [诗泉 palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)（公共实例 [poetry.palemoky.com](https://poetry.palemoky.com)），运行时通过公开 API 获取，仓库不包含其代码。感谢两个项目的维护者。
 - 简繁转换：[opencc-js](https://github.com/nk2028/opencc-js)（MIT；词典数据来自 OpenCC / opencc-data，Apache-2.0），本地托管，许可证见 `site/vendor/opencc-js-1.4.2/`。
-- 字体：思源宋体 / 思源黑体 Noto Serif SC、Noto Sans SC（SIL OFL 1.1，经 fonts.googleapis.cn 加载）、[霞鹜文楷 LXGW WenKai](https://github.com/lxgw/LxgwWenKai)（SIL OFL 1.1，选「楷」时经 jsDelivr 加载）、Noto Serif（拼音，SIL OFL 1.1，本地托管）。Logo 中的「吟」字形取自霞鹜文楷（SIL OFL 1.1）。
+- 字体：[朱雀仿宋 Zhuque Fangsong](https://github.com/TrionesType/zhuque)（© 2023 浙江璇玑造字 JadeFoci / TrionesType，SIL OFL 1.1，本站托管分片版，来自 [中文网字计划](https://chinese-font.netlify.app) 的 npm 包 `@chinese-fonts/zqfs`，许可证见 `site/fonts/zhuque-fangsong/OFL.txt`）、站酷小薇 ZCOOL XiaoWei、马善政楷书 Ma Shan Zheng、站酷快乐体 ZCOOL KuaiLe、龙藏体 Long Cang（均为 SIL OFL 1.1，选中时经 fonts.googleapis.cn 加载）、思源宋体 / 思源黑体 Noto Serif SC、Noto Sans SC（SIL OFL 1.1，经 fonts.googleapis.cn 加载）、[霞鹜文楷 LXGW WenKai](https://github.com/lxgw/LxgwWenKai)（SIL OFL 1.1，选「楷」时经 jsDelivr 加载）、Noto Serif（拼音，SIL OFL 1.1，本地托管）。Logo 中的「吟」字形取自霞鹜文楷（SIL OFL 1.1）。
 - 感谢 [tjsky/pinyin-annotator](https://github.com/tjsky/pinyin-annotator) 带来的灵感——吟诗最初就是从它开始的；现在的版本是独立重写的新项目，不含它的代码。

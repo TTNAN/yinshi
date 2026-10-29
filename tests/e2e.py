@@ -1,9 +1,9 @@
-"""吟诗 · 无头浏览器验收（用录好的 API 响应模拟诗泉，不访问真实接口）
+"""吟诗 · 无头浏览器验收（用录好的 API 响应模拟主诗库 snowtraces 与备用诗泉，不访问真实诗库；真实联网检查见 live_browser.py）
 
 用法：python3 tests/e2e.py [截图输出目录]
 """
 import json, os, re, sys, threading, functools, http.server
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,8 +20,8 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 BASE = f"http://127.0.0.1:{srv.server_address[1]}/"
 
 calls, errors, results = [], [], {}
-# 两个诗泉实例：主实例 poetry.llmaix.com/api/v1（单字搜索、type=author、随机直接返回一首诗）；
-# 备用 poetry.palemoky.com/api（搜索至少 3 个字）。MODE["api"] = "down" 时主实例连不上，应自动改用备用实例
+# 主诗库 poetry-api.snowtraces.com/v1（搜索至少 2 个字、/authors 名字→id、游标分页、随机直接 {data}）；
+# 备用 poetry.palemoky.com/api（随机 / 单字 / 3 字以上搜索）。MODE["api"] = "down" 时主诗库连不上，应自动改用备用
 MODE = {"api": "up"}
 # 分段运行：YINSHI_PART=base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
 PART = os.environ.get("YINSHI_PART", "all")
@@ -52,36 +52,42 @@ def mock(route):
     else: return route.fulfill(status=404, headers=H, body="{}")
     route.fulfill(status=200, headers=H, body=json.dumps(body, ensure_ascii=False))
 
-def mock_v1(route):
+def st_item(p):
+    """把录好的诗泉格式转成 snowtraces 的作品格式（简体）"""
+    t = {"宋词": "ci", "元曲": "qu"}.get(p["type"]["name"], "poetry")
+    return {"id": f"w{p['id']}", "type": t, "title": p["title"], "authorName": p["author"]["name"], "authorId": "a-" + p["author"]["name"],
+            "dynasty": p["dynasty"]["name"], "content": p["content"]}
+
+def mock_st(route):
     u = urlparse(route.request.url); q = parse_qs(u.query); calls.append(route.request.url)
     if MODE["api"] == "down":
         return route.abort("connectionrefused")
     H = {"access-control-allow-origin": "*", "content-type": "application/json"}
-    F = FXH if q.get("lang", [""])[0] == "zh-Hant" else FX
-    p = u.path
-    if p.endswith("/poems/search"):
-        key = q.get("q", [""])[0]; typ = q.get("type", ["all"])[0]; page = int(q.get("page", ["1"])[0])
-        if not key:
-            return route.fulfill(status=400, headers=H, body=json.dumps({"error": "query parameter 'q' is required"}))
-        if typ == "author":
-            pages = F.get("poems_author_" + key) or []
-            data = pages[page - 1] if page <= len(pages) else []
-            body = {"data": data, "pagination": {"page": page, "page_size": 50, "total": sum(map(len, pages)), "total_pages": len(pages)}}
-        else:
-            data = F["search"].get(key, [])
-            body = {"data": data, "pagination": {"page": page, "page_size": 30, "total": len(data), "total_pages": 1 if data else 0}}
-    elif p.endswith("/poems/random"):
-        if q.get("char"): poem = F.get("random_char_" + q["char"][0])
-        elif q.get("author"):
-            poem = F.get("random_author_" + q["author"][0])
-            if not poem:
-                return route.fulfill(status=404, headers=H, body=json.dumps({"error": "author not found"}))
-        else: poem = F["random_default"]
-        body = poem
-    elif p.endswith("/dynasties"): body = {"data": FX["dynasties"]}
-    elif p.endswith("/types"): body = {"data": FX["types"]}
-    else: return route.fulfill(status=404, headers=H, body="{}")
-    route.fulfill(status=200, headers=H, body=json.dumps(body, ensure_ascii=False))
+    ok = lambda data, cur=None: route.fulfill(status=200, headers=H, body=json.dumps({"data": data, "meta": {"page_size": 20, "next_cursor": cur, "count": len(data) if isinstance(data, list) else 1}, "error": None}, ensure_ascii=False))
+    err = lambda st, code: route.fulfill(status=st, headers=H, body=json.dumps({"data": None, "meta": {}, "error": {"code": code, "message": code}}))
+    p = unquote(u.path).replace("/v1", "", 1)
+    known = lambda n: FX.get("poems_author_" + n) or FX.get("random_author_" + n)
+    if p == "/authors":
+        n = q.get("q", [""])[0]
+        return ok([{"id": "a-" + n, "name": n, "dynasty": "唐"}] if known(n) else [])
+    m = re.match(r"^/authors/a-(.+)/works$", p)
+    if m:
+        pages = FX.get("poems_author_" + m.group(1)) or []
+        i = int(q.get("cursor", ["c1"])[0][1:]) - 1
+        return ok([st_item(x) for x in (pages[i] if i < len(pages) else [])], f"c{i + 2}" if i + 1 < len(pages) else None)
+    if p == "/works/random":
+        aid = q.get("author_id", [""])[0]
+        if aid:
+            poem = FX.get("random_author_" + aid[2:])
+            return ok(st_item(poem)) if poem else err(404, "NOT_FOUND")
+        return ok(st_item(FX["random_default"]))
+    if p == "/works":
+        key = q.get("q", [""])[0]
+        if len(key) < 2: return err(400, "QUERY_TOO_SHORT")
+        return ok([st_item(x) for x in FX["search"].get(key, [])])
+    if p == "/dynasties":
+        return ok(["三国", "五代十国", "元", "南北朝", "唐", "宋", "明", "晋", "汉", "清", "秦", "金", "隋"])
+    return err(404, "NOT_FOUND")
 
 FONT_CACHE = "/tmp/yinshi-font-cache"
 os.makedirs(FONT_CACHE, exist_ok=True)
@@ -107,9 +113,9 @@ def new_page(browser, w, h, mobile=False):
                               is_mobile=mobile, has_touch=mobile, accept_downloads=True, locale="zh-CN")
     page = ctx.new_page()
     page.route(re.compile(r"https://poetry\.palemoky\.com/.*"), mock)
-    page.route(re.compile(r"https://poetry\.llmaix\.com/.*"), mock_v1)
+    page.route(re.compile(r"https://poetry-api\.snowtraces\.com/.*"), mock_st)
     page.route(re.compile(r"https://(cdn\.jsdelivr\.net|fonts\.googleapis\.cn|fonts\.gstatic\.cn)/.*"), cdn)
-    page.on("console", lambda m: m.type in ("error", "warning") and not (MODE["api"] == "down" and "llmaix" in (m.location.get("url", "") + m.text)) and errors.append(f"{w}: {m.type}: {m.text} @ {m.location.get('url','')}"))
+    page.on("console", lambda m: m.type in ("error", "warning") and not (MODE["api"] == "down" and "snowtraces" in (m.location.get("url", "") + m.text)) and errors.append(f"{w}: {m.type}: {m.text} @ {m.location.get('url','')}"))
     page.on("requestfailed", lambda r: MODE["api"] != "down" and errors.append(f"{w}: requestfailed: {r.url[:90]}"))
     page.on("response", lambda r: r.status >= 400 and errors.append(f"{w}: {r.status}: {r.url[:110]}"))
     page.on("pageerror", lambda e: errors.append(f"{w}: pageerror: {e}"))
@@ -246,7 +252,7 @@ with sync_playwright() as p:
         results["libai_sections"] = pg.eval_on_selector_all("#results .res-sec", "els => els.map(e => e.textContent)")
         results["libai_first"] = pg.eval_on_selector_all("#results .res-t", "els => els.slice(0, 6).map(e => e.textContent)")
         results["libai_status"] = pg.inner_text("#sheetStatus")
-        results["libai_author_calls"] = [c for c in calls if "type=author" in c]
+        results["libai_author_calls"] = [c for c in calls if "/authors" in c]
         pg.screenshot(path=f"{OUT}/20-search-libai.png")
         n_before = pg.locator("#results .res").count()
         pg.click("[data-more-author]"); settle(pg, 900)
@@ -341,10 +347,10 @@ with sync_playwright() as p:
         results["hant_after_reload_title"] = pg.inner_text(".poem-title").replace("\n", "")
         pg.screenshot(path=f"{OUT}/61-hant-horizontal-daily.png", full_page=True)
         pg.fill("#q", "李白"); pg.press("#q", "Enter"); settle(pg, 1200)
-        results["hant_search_calls"] = [c for c in calls if "zh-Hant" in c and "search" in c][-2:]
+        results["hant_search_calls"] = [c for c in calls if "/works?" in c][-2:]
         results["hant_libai_sections"] = pg.eval_on_selector_all("#results .res-sec", "els => els.map(e => e.textContent)")
         results["hant_libai_titles"] = pg.eval_on_selector_all("#results .res-t", "els => els.slice(0, 8).map(e => e.textContent)")
-        results["hant_author_lang"] = [c for c in calls if "type=author" in c][-1:]
+        results["hant_author_calls"] = [c for c in calls if "/authors" in c][-2:]
         pg.screenshot(path=f"{OUT}/61-hant-search-libai.png")
         pg.context.close()
 
@@ -355,7 +361,7 @@ with sync_playwright() as p:
         def fontinfo(page):
             return page.evaluate("""() => { const h = document.querySelector('.poem-body ruby.c .h');
               const fam = getComputedStyle(h).fontFamily.split(',')[0].replace(/"/g,'').trim();
-              return { first: fam, loaded: document.fonts.check('40px "' + fam + '"', h.textContent), data: document.documentElement.dataset.font || 'song' }; }""")
+              return { first: fam, loaded: document.fonts.check('40px "' + fam + '"', h.textContent), data: document.documentElement.dataset.font || 'fang' }; }""")
         def export(page, name):
             with page.expect_download() as dl:
                 page.click("#btnImage")
@@ -363,8 +369,8 @@ with sync_playwright() as p:
             settle(page, 300)
         pg = new_page(b, 1440, 1000)
         pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 2600)
-        results["font_song"] = fontinfo(pg); results["ov_song_h"] = overlaps(pg)
-        pg.screenshot(path=f"{OUT}/30-font-song-horizontal.png", full_page=True)
+        results["font_default"] = fontinfo(pg); results["ov_default_h"] = overlaps(pg)
+        pg.screenshot(path=f"{OUT}/30-font-fang-default-horizontal.png", full_page=True)
         setting(pg, '[data-font="kai"]')
         results["font_kai"] = fontinfo(pg); results["ov_kai_h"] = overlaps(pg)
         pg.screenshot(path=f"{OUT}/31-font-kai-horizontal.png", full_page=True)

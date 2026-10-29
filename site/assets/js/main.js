@@ -21,12 +21,12 @@ const DISPLAY = {
   lh: { tight: ["紧凑", .08], normal: ["适中", .18], loose: ["宽松", .38] },
 };
 const DISPLAY_DEFAULT = { size: "m", py: "m", lh: "normal" };
-const FALLBACK_DYN = ["先秦", "两汉", "魏晋", "南北朝", "隋", "唐", "五代", "宋", "元", "明", "清"];
+const FALLBACK_DYN = api.DYN_ORDER;
 // 筛选面板「诗人」的常用候选
 const POETS = ["李白", "杜甫", "白居易", "王维", "苏轼", "李清照", "辛弃疾", "陆游", "杜牧", "李商隐", "孟浩然", "王安石", "刘禹锡", "柳宗元",
   "岑参", "王昌龄", "贺知章", "范仲淹", "欧阳修", "纳兰性德", "杨万里", "陶渊明", "韩愈", "高适", "王之涣", "李贺", "柳永", "晏殊", "秦观", "曹操"];
 const LANGS = { hans: ["简体", "zh-Hans"], hant: ["繁體", "zh-Hant"] };
-const FALLBACK_TYPE = ["五言绝句", "七言绝句", "五言律诗", "七言律诗", "五言古诗", "七言古诗", "乐府诗", "宋词", "元曲", "诗经", "楚辞"];
+const FALLBACK_TYPE = Object.keys(api.TYPES);   // 诗 / 词 / 曲
 
 let DAILY = [];
 const VQ = (() => { const v = new URL(import.meta.url).searchParams.get("v"); return v ? "?v=" + v : ""; })();
@@ -41,6 +41,13 @@ const state = {
   lang: store.get("lang", "hans") === "hant" ? "hant" : "hans",
 };
 api.setLang(LANGS[state.lang][1]);
+// 旧版筛选（诗泉的朝代名、「五言绝句」等体裁）换成主诗库的叫法
+(() => {
+  const f = state.filters;
+  if (api.DYN_FROM_OLD[f.dynasty]) f.dynasty = api.DYN_FROM_OLD[f.dynasty];
+  if (f.dynasty && !api.DYN_ORDER.includes(f.dynasty)) f.dynasty = "";
+  f.types = (Array.isArray(f.types) ? f.types : []).filter((t) => api.TYPES[t]);
+})();
 if (!MODES[state.view.mode]) state.view.mode = "h";
 Object.keys(DISPLAY).forEach((k) => { if (!DISPLAY[k][state.display[k]]) state.display[k] = DISPLAY_DEFAULT[k]; });
 
@@ -292,7 +299,7 @@ async function fullSearch(q, page = 1) {
   $("btnMore").hidden = true;
   const [sr, ar] = await Promise.allSettled([
     api.search(toApi(q), page),
-    asAuthor ? api.authorPoems(k, 1, sameName) : Promise.resolve(null),
+    asAuthor ? api.authorPoems(k, 1) : Promise.resolve(null),
   ]);
   if (state.search.q !== q) return;   // 期间又搜了别的
   if (ar.status === "fulfilled" && ar.value && ar.value.list.length) {
@@ -317,6 +324,14 @@ async function fullSearch(q, page = 1) {
   const n = new Set([...state.search.local, ...state.search.remote, ...(au ? au.list : [])].map(poemKey)).size;
   if (sr.status === "fulfilled" || au) {
     const auLine = au ? `${esc(toDisp(au.name))}的诗${au.total ? ` ${au.total} 首` : ""}` : "";
+    if (sr.status === "fulfilled" && sr.value.sampled) {
+      // 单字：诗库按诗名、诗人检索，至少两个字；这里随机抽了几首含这个字的诗，再给个飞花令入口
+      const fh = `<button class="btn ghost" type="button" data-act="feihua" data-v="${esc(k)}">飞花令「${esc(toDisp(k))}」再来一首</button>`;
+      const c = esc(toDisp(k)), m = sr.value.list.length;
+      const lead = m ? `随机挑了 ${m} 首含「${c}」的诗，点一首读` : n ? `课本里有 ${n} 首含「${c}」的诗，点一首读` : `玩飞花令，随机读一首含「${c}」的诗`;
+      setStatus(`${lead}<br><small>搜诗名、诗人请输入两个字以上</small><br>${fh}`);
+      return;
+    }
     setStatus(n ? (au ? `${auLine} · 点一首读` : `找到 ${n}${hasMore ? "+" : ""} 首，点一首读`) : `没有找到「${esc(q)}」，换个说法试试`);
     return;
   }
@@ -338,7 +353,7 @@ async function moreAuthor() {
   if (!au || au.loading) return;
   au.loading = true; renderResults();
   try {
-    const r = await api.authorPoems(au.name, au.page + 1, sameName);
+    const r = await api.authorPoems(au.name, au.page + 1);
     const fresh = r.list.filter((p) => !au.keys.has(poemKey(p)));
     fresh.forEach((p) => au.keys.add(poemKey(p)));
     au.list = au.list.concat(fresh);
@@ -508,18 +523,16 @@ function settingsPop(anchor) {
   closePop();
   const n = Object.keys(overrides()).length;
   const cur = fonts.current();
-  const fang = fonts.hasFangsong();
   const segBtn = (attr, v, label, on, title = "") => `<button type="button" role="radio" ${attr}="${v}" aria-checked="${on}"${title ? ` title="${esc(title)}" aria-label="${esc(title)}"` : ""}>${label}</button>`;
   openPop(`
     <h3><span>设置</span></h3>
     <div class="set">
       <div class="set-row">
         <b>字体</b>
-        <div class="seg seg-sm" role="radiogroup" aria-label="诗文字体">
-          ${Object.entries(fonts.FONTS).map(([k, f]) => segBtn("data-font", k, f.short, k === cur,
-            k === "fang" && !fang ? "仿宋（依系统）" : f.name)).join("")}
+        <div class="font-grid" role="radiogroup" aria-label="诗文字体">
+          ${Object.entries(fonts.FONTS).map(([k, f]) => `<button type="button" role="radio" data-font="${k}" aria-checked="${k === cur}" title="${esc(f.note)}" aria-label="${esc(f.name + "（" + f.note + "）")}"><span class="fn">${esc(f.name)}</span><span class="fs">${esc(f.note)}</span></button>`).join("")}
         </div>
-        <small>${fang || cur !== "fang" ? "诗文所用字体，导出图片和打印也用它" : "仿宋（依系统）：这台设备没装仿宋，暂以宋体显示"}</small>
+        <small>诗文所用字体，导出图片和打印也用它；只下载选中的那一种</small>
       </div>
       ${Object.entries({ size: "字号", py: "拼音", lh: "行距" }).map(([k, label]) => `<div class="set-row">
         <b>${label}</b>
@@ -547,13 +560,12 @@ function settingsPop(anchor) {
       ${n ? `<button class="btn text" type="button" data-clear-ov>清除本诗的 ${n} 处自定义读音</button>` : ""}
     </div>
   `, anchor, { sheetOnMobile: true, cls: "pop-set" });
+  fonts.loadPreviews();
 }
 
 function setFont(k) {
   fonts.choose(k);
   document.querySelectorAll("#pop [data-font]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.font === k)));
-  const sm = document.querySelector("#pop [data-font]")?.closest(".set-row")?.querySelector("small");
-  if (sm) sm.textContent = k === "fang" && !fonts.hasFangsong() ? "仿宋（依系统）：这台设备没装仿宋，暂以宋体显示" : "诗文所用字体，导出图片和打印也用它";
   if (state.poem) fit($("poemView"), state.view.mode);
   fonts.ready(state.poem ? state.poem.title + state.poem.lines.join("") : "").then(() => state.poem && fit($("poemView"), state.view.mode));
 }
@@ -736,7 +748,7 @@ function bind() {
     const opt = e.target.closest(".opt"); if (opt) { setReading(pop.dataset.k, opt.dataset.py); return; }
     if (e.target.closest("[data-reset]")) { setReading(pop.dataset.k, ""); return; }
     const fh = e.target.closest("[data-fh-ch]"); if (fh) { doFeihua(fh.dataset.fhCh); return; }
-    const fo = e.target.closest("[data-font]"); if (fo) { setFont(fo.dataset.font); return; }
+    const fo = e.target.closest("button[data-font]"); if (fo) { setFont(fo.dataset.font); return; }
     const vd = e.target.closest("[data-vdir]"); if (vd) { setVdir(vd.dataset.vdir); return; }
     const lg = e.target.closest("[data-lang]"); if (lg) { setLang(lg.dataset.lang); return; }
     const am = e.target.closest("[data-author-more]"); if (am) { authorSearch(am.dataset.authorMore); return; }

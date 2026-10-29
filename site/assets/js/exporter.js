@@ -110,12 +110,9 @@ async function paint(card) {
   // 田字格
   if (grid) {
     const lineC = "#d79a90", soft = "rgba(215,154,144,.6)";
-    poem.querySelectorAll(".poem-body ruby.c rt, .poem-body .pc").forEach((el) => {
-      let r = el.getBoundingClientRect();
-      if (el.classList.contains("pc")) { // 标点格的四线三格画在 ::after 上
-        const rtH = parseFloat(getComputedStyle(el, "::after").height) || 0;
-        r = { left: r.left, top: r.top, width: r.width, height: rtH };
-      }
+    // 拼音四线三格：只画在汉字上，标点格没有（与页面一致）
+    poem.querySelectorAll(".poem-body ruby.c rt").forEach((el) => {
+      const r = el.getBoundingClientRect();
       const x = X(r), y = Y(r), w = r.width, hh = r.height;
       ctx.strokeStyle = lineC; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, hh - 1);
       ctx.strokeStyle = soft;
@@ -140,7 +137,11 @@ async function paint(card) {
     let cx = X(r) + r.width / 2, cy = Y(r) + r.height / 2;
     if (el.parentElement.classList.contains("pc")) {
       if (vertical) { cx = X(r) + r.width / 2 + size * .3; cy = Y(r) + size * .3; }
-      else if (grid) { cx = X(r) + size * .35; cy = Y(r) + r.height / 2 + size * .1; }
+      else if (grid && el.firstChild) {
+        // 按页面上标点字形实际所在的位置画（各字体的标点字面位置不同，用固定偏移会压到格线）
+        const rg = document.createRange(); rg.selectNodeContents(el); const t = rg.getBoundingClientRect();
+        cx = X(t) + t.width / 2; cy = Y(t) + t.height / 2;
+      }
       else { cx = X(r) + size * .5; }
     }
     ctx.fillText(el.textContent, cx, cy);

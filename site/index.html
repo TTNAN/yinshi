@@ -10,22 +10,24 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.cn">
 <link rel="preconnect" href="https://fonts.gstatic.cn" crossorigin>
-<link rel="stylesheet" id="font-song" href="https://fonts.googleapis.cn/css2?family=Noto+Serif+SC:wght@400&amp;display=swap">
 <script>
-/* 首屏前套用上次选的诗文字体，只加载那一种 */
+/* 首屏前套用上次选的诗文字体，只加载那一种（默认朱雀仿宋，本站托管）。地址与 assets/js/fonts.js 保持一致 */
 (function () {
-  try {
-    var k = JSON.parse(localStorage.getItem("yinshi:font"));
-    var u = { kai: "https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css",
-              hei: "https://fonts.googleapis.cn/css2?family=Noto+Sans+SC:wght@400&display=swap", fang: "" };
-    if (!(k in u)) return;
-    document.documentElement.setAttribute("data-font", k);
-    if (u[k]) { var l = document.createElement("link"); l.rel = "stylesheet"; l.id = "font-" + k; l.href = u[k]; document.head.appendChild(l); }
-  } catch (e) { /* 存储不可用 */ }
+  var G = "https://fonts.googleapis.cn/css2?family=";
+  var u = { fang: "fonts/zhuque-fangsong/zhuque-fangsong.css",
+            song: G + "Noto+Serif+SC:wght@400&display=swap",
+            kai: "https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css",
+            hei: G + "Noto+Sans+SC:wght@400&display=swap",
+            xiaowei: G + "ZCOOL+XiaoWei&display=swap", mashan: G + "Ma+Shan+Zheng&display=swap",
+            kuaile: G + "ZCOOL+KuaiLe&display=swap", longcang: G + "Long+Cang&display=swap" };
+  var k = "fang";
+  try { var s = JSON.parse(localStorage.getItem("yinshi:font")); if (s in u) k = s; } catch (e) { /* 存储不可用 */ }
+  if (k !== "fang") document.documentElement.setAttribute("data-font", k);
+  document.write('<link rel="stylesheet" id="font-' + k + '" href="' + u[k] + '">');
 })();
 </script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/yinshi.css?v=20261029">
+<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291317">
 </head>
 <body>
 <a class="skip" href="#poem">跳到诗文</a>
@@ -153,23 +155,23 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
-<script src="poem/config.js?v=20261029"></script>
+<script src="poem/config.js?v=202610291317"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
 <!-- 发版时把所有 ?v= 改成新的版本号（tools/bump-version.sh），避免浏览器拿旧缓存的脚本和样式拼在一起 -->
 <script type="importmap">
 {
   "imports": {
-    "./assets/js/api.js": "./assets/js/api.js?v=20261029",
-    "./assets/js/exporter.js": "./assets/js/exporter.js?v=20261029",
-    "./assets/js/fonts.js": "./assets/js/fonts.js?v=20261029",
-    "./assets/js/main.js": "./assets/js/main.js?v=20261029",
-    "./assets/js/reading.js": "./assets/js/reading.js?v=20261029",
-    "./assets/js/render.js": "./assets/js/render.js?v=20261029",
-    "./assets/js/store.js": "./assets/js/store.js?v=20261029",
-    "./assets/js/zh.js": "./assets/js/zh.js?v=20261029"
+    "./assets/js/api.js": "./assets/js/api.js?v=202610291317",
+    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291317",
+    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291317",
+    "./assets/js/main.js": "./assets/js/main.js?v=202610291317",
+    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291317",
+    "./assets/js/render.js": "./assets/js/render.js?v=202610291317",
+    "./assets/js/store.js": "./assets/js/store.js?v=202610291317",
+    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291317"
   }
 }
 </script>
-<script type="module" src="assets/js/main.js?v=20261029"></script>
+<script type="module" src="assets/js/main.js?v=202610291317"></script>
 </body>
 </html>

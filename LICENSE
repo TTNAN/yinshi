@@ -37,9 +37,21 @@ Noto Serif (pinyin typeface)
 LXGW WenKai / 霞鹜文楷 (Chinese typeface, loaded from jsDelivr at runtime, not bundled)
   https://github.com/lxgw/LxgwWenKai — SIL Open Font License 1.1
 
-Poem data — 诗泉 palemoky/chinese-poetry-api
-  Poems are fetched at runtime from the public HTTP API at
+Zhuque Fangsong / 朱雀仿宋 (technical preview 0.108, default poem typeface)
+  site/fonts/zhuque-fangsong/ — unicode-range split webfont from the npm package
+  @chinese-fonts/zqfs 3.0.0 (cn-font-split; packaging MIT, KonghaYao), font unmodified otherwise
+  Copyright (c) 2023, Zhejiang JadeFoci Technology Co. LTD / TrionesType
+  https://github.com/TrionesType/zhuque
+  SIL Open Font License 1.1 — full text: site/fonts/zhuque-fangsong/OFL.txt
+
+ZCOOL XiaoWei / 站酷小薇, Ma Shan Zheng / 马善政楷书, ZCOOL KuaiLe / 站酷快乐体, Long Cang / 龙藏体,
+Noto Serif SC / Noto Sans SC (Chinese typefaces, loaded from fonts.googleapis.cn only when chosen, not bundled)
+  SIL Open Font License 1.1
+
+Poem data — snowtraces/poetry-source and 诗泉 palemoky/chinese-poetry-api
+  Poems are fetched at runtime from the public HTTP APIs at
+  https://poetry-api.snowtraces.com (https://github.com/snowtraces/poetry-source) and
   https://poetry.palemoky.com (https://github.com/palemoky/chinese-poetry-api).
-  No code from that project is included in this repository.
+  No code from those projects is included in this repository.
 
 Classical poem texts in site/poem/daily-poems.json are public-domain works.

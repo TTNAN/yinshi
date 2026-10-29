@@ -27,7 +27,7 @@
   --grid: #d79a90;         /* 田字格线 */
   --shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 30px 60px -30px rgba(70, 50, 25, .28), 0 8px 20px -12px rgba(70, 50, 25, .18);
   /* 诗文字体：设置里可切换（宋 / 楷 / 黑 / 仿宋），默认宋体（思源宋体 Noto Serif SC） */
-  --han: "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif;
+  --han: "Zhuque Fangsong", "STFangsong", "FangSong", "FangSong_GB2312", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;   /* 默认：朱雀仿宋 */
   --py: "Yinshi Pinyin", "Noto Serif", "Georgia", "Times New Roman", serif;
   --ui: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --cs: 44px;              /* 汉字字号，JS 按版面自适应 */
@@ -39,9 +39,14 @@
   color-scheme: light;
 }
 
+:root[data-font="song"] { --han: "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
 :root[data-font="kai"] { --han: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
 :root[data-font="hei"] { --han: "Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
-:root[data-font="fang"] { --han: "STFangsong", "FangSong", "FangSong_GB2312", "Fangsong SC", "Noto Serif SC", "Songti SC", serif; }
+/* 以下几种字库只收常用简体字，缺字（多为繁体）时退回宋体 */
+:root[data-font="xiaowei"] { --han: "ZCOOL XiaoWei", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="mashan"] { --han: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="kuaile"] { --han: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif; }
+:root[data-font="longcang"] { --han: "Long Cang", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
 
 * { box-sizing: border-box; }
 *::before, *::after { box-sizing: border-box; }
@@ -330,6 +335,8 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
     repeating-linear-gradient(180deg, rgba(215,154,144,.7) 0 4px, transparent 4px 8px) 50% 0 / 1px 100% no-repeat,
     repeating-linear-gradient(90deg, rgba(215,154,144,.7) 0 4px, transparent 4px 8px) 0 50% / 100% 1px no-repeat;
 }
+/* 标点格不画拼音四线格（标点没有拼音）：只留同样高度的空位，让下面的田字格与左右对齐；遮字时也就不会多出一个红框 */
+.poem.m-g .poem-body .pc::after { background: none; border-color: transparent; }
 .poem.m-g .poem-body .pc .h { text-align: left; padding-left: .12em; line-height: calc(var(--cs) * 1.75); color: var(--ink-2); }
 .poem.m-g .poem-body ruby.c:hover { background: none; }
 .poem.m-g .poem-body ruby.c:hover .h { background-color: var(--zhu-soft); }
@@ -430,11 +437,25 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .set-row .seg { justify-self: end; }
 .set-row small { grid-column: 1 / -1; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
 .seg.seg-sm button { height: 28px; padding: 0 12px; font-size: 13px; letter-spacing: .08em; }
-.seg.seg-sm [data-font] { font-family: var(--han); font-size: 15px; letter-spacing: 0; min-width: 36px; }
-.seg.seg-sm [data-font="song"] { font-family: "Noto Serif SC", "Songti SC", "STSong", serif; }
-.seg.seg-sm [data-font="kai"] { font-family: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", serif; }
-.seg.seg-sm [data-font="hei"] { font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
-.seg.seg-sm [data-font="fang"] { font-family: "STFangsong", "FangSong", "Noto Serif SC", serif; }
+/* 字体：一格一种，名字用它自己的字体显示 */
+.font-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.font-grid button {
+  display: grid; place-items: center; gap: 1px; padding: 7px 2px 6px; min-height: 54px; border-radius: 10px;
+  border: 1px solid rgba(212, 199, 176, .8); background: rgba(255, 255, 255, .35); color: var(--ink-2); cursor: pointer;
+  transition: background .2s, border-color .2s, box-shadow .2s;
+}
+.font-grid button:hover { border-color: var(--line-2); color: var(--ink); }
+.font-grid button[aria-checked="true"] { background: var(--card); color: var(--ink); border-color: rgba(181, 53, 42, .55); box-shadow: 0 0 0 1px rgba(181, 53, 42, .35), 0 1px 3px rgba(60, 45, 25, .12); }
+.font-grid .fn { font-size: 21px; line-height: 1.15; letter-spacing: .04em; }
+.font-grid .fs { font-family: var(--ui); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; white-space: nowrap; }
+.font-grid [data-font="fang"] .fn { font-family: "Zhuque Fangsong", "STFangsong", "FangSong", serif; }
+.font-grid [data-font="song"] .fn { font-family: "Noto Serif SC", "Songti SC", "STSong", serif; }
+.font-grid [data-font="kai"] .fn { font-family: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", serif; }
+.font-grid [data-font="hei"] .fn { font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+.font-grid [data-font="xiaowei"] .fn { font-family: "ZCOOL XiaoWei", serif; }
+.font-grid [data-font="mashan"] .fn { font-family: "Ma Shan Zheng", "Kaiti SC", "KaiTi", serif; }
+.font-grid [data-font="kuaile"] .fn { font-family: "ZCOOL KuaiLe", sans-serif; }
+.font-grid [data-font="longcang"] .fn { font-family: "Long Cang", "Kaiti SC", "KaiTi", serif; }
 .set .set-reset { justify-self: end; margin: 0 2px 2px; height: 28px; }
 .set-sub { margin: 6px 6px 0; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--ink-3); letter-spacing: .25em; }
 
