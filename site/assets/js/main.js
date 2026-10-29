@@ -5,6 +5,7 @@ import { loadFixes, annotate, optionsFor, normalizePinyin, HAN } from "./reading
 import { renderPoem, fit } from "./render.js";
 import { cardToPNG, download, poemToText, copyText } from "./exporter.js";
 import * as fonts from "./fonts.js";
+import * as zh from "./zh.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -21,9 +22,14 @@ const DISPLAY = {
 };
 const DISPLAY_DEFAULT = { size: "m", py: "m", lh: "normal" };
 const FALLBACK_DYN = ["先秦", "两汉", "魏晋", "南北朝", "隋", "唐", "五代", "宋", "元", "明", "清"];
+// 筛选面板「诗人」的常用候选
+const POETS = ["李白", "杜甫", "白居易", "王维", "苏轼", "李清照", "辛弃疾", "陆游", "杜牧", "李商隐", "孟浩然", "王安石", "刘禹锡", "柳宗元",
+  "岑参", "王昌龄", "贺知章", "范仲淹", "欧阳修", "纳兰性德", "杨万里", "陶渊明", "韩愈", "高适", "王之涣", "李贺", "柳永", "晏殊", "秦观", "曹操"];
+const LANGS = { hans: ["简体", "zh-Hans"], hant: ["繁體", "zh-Hant"] };
 const FALLBACK_TYPE = ["五言绝句", "七言绝句", "五言律诗", "七言律诗", "五言古诗", "七言古诗", "乐府诗", "宋词", "元曲", "诗经", "楚辞"];
 
 let DAILY = [];
+const VQ = (() => { const v = new URL(import.meta.url).searchParams.get("v"); return v ? "?v=" + v : ""; })();
 const state = {
   poem: null, alt: null,
   view: { mode: store.get("mode", "h"), vdir: store.get("vdir", "rl") === "lr" ? "lr" : "rl", pinyin: store.get("pinyin", true), veil: false, veiled: new Set(), today: false, tag: "", hi: "" },
@@ -32,7 +38,9 @@ const state = {
   filters: Object.assign({ dynasty: "", types: [], author: "" }, store.get("filters", {})),
   ann: null,
   search: { q: "", page: 1, local: [], remote: [], author: null },
+  lang: store.get("lang", "hans") === "hant" ? "hant" : "hans",
 };
+api.setLang(LANGS[state.lang][1]);
 if (!MODES[state.view.mode]) state.view.mode = "h";
 Object.keys(DISPLAY).forEach((k) => { if (!DISPLAY[k][state.display[k]]) state.display[k] = DISPLAY_DEFAULT[k]; });
 
@@ -69,13 +77,29 @@ function findTextbook(p) {
   return i < 0 ? null : dailyPoem(i);
 }
 
+/* ---------------- 简 / 繁 ---------------- */
+const hant = () => state.lang === "hant" && zh.ready();
+// 一首诗的两个版本：disp 是按当前简繁显示的文字，simp 是简体（用来注音、对课本、记自定义读音）
+function view(p) {
+  if (!p) return { disp: p, simp: p };
+  const from = p.lang || "hans";
+  const conv = (fn) => ({ ...p, title: fn(p.title), author: fn(p.author), dynasty: fn(p.dynasty), type: fn(p.type), lines: p.lines.map(fn) });
+  const simp = from === "hant" && zh.ready() ? conv(zh.t2s) : p;
+  const disp = hant() ? (from === "hant" ? p : conv(zh.s2t)) : simp;
+  return { disp, simp };
+}
+const toSimp = (s) => (zh.ready() ? zh.t2s(s) : s);
+const toApi = (s) => (hant() ? zh.s2t(s) : s);           // 发给诗库的查询词
+const toDisp = (s) => (hant() ? zh.s2t(s) : s);          // 界面上显示的诗文
+const sameName = (a, b) => toSimp(a) === toSimp(b);
+
 /* ---------------- 诗 → 屏幕 ---------------- */
 // 「赋得古原草送别（节选）」→ 主标题 + 小注「节选」
 export function splitTitle(t) {
   const m = String(t || "").match(/^(.*?)[（(]([^）)]*)[）)]\s*$/);
   return m && m[1].trim() ? { main: m[1].trim(), sub: m[2].trim() } : { main: String(t || "").trim(), sub: "" };
 }
-function ovKey(p) { return "ov:" + store.hash(p.title + "|" + p.author + "|" + p.lines.join("/")); }
+function ovKey(p) { const s = view(p).simp; return "ov:" + store.hash(s.title + "|" + s.author + "|" + s.lines.join("/")); }
 function overrides() { return state.poem ? store.get(ovKey(state.poem), {}) : {}; }
 
 function setPoem(p, opts = {}) {
@@ -86,8 +110,9 @@ function setPoem(p, opts = {}) {
   state.view.veiled = new Set(state.view.veil ? p.lines.map((_, i) => i) : []);
   state.alt = opts.alt !== undefined ? opts.alt : null;
   if (p.source === "api" && opts.alt === undefined) {
-    const tb = findTextbook(p);
-    if (tb && hanOnly(tb.lines.join("")) !== hanOnly(p.lines.join(""))) state.alt = { poem: tb, from: p, toTextbook: true };
+    const s = view(p).simp;
+    const tb = findTextbook(s);
+    if (tb && hanOnly(tb.lines.join("")) !== hanOnly(s.lines.join(""))) state.alt = { poem: tb, from: p, toTextbook: true };
   }
   draw(true);
   closeSheet(); closePop();
@@ -98,13 +123,16 @@ function setPoem(p, opts = {}) {
 function draw(animate = false) {
   const p = state.poem;
   if (!p) return;
-  const o = { textbook: state.settings.textbook, recite: state.settings.recite, overrides: overrides(), hi: state.view.hi };
+  const { disp, simp } = view(p);
+  state.disp = disp;
+  const o = { textbook: state.settings.textbook, recite: state.settings.recite, overrides: overrides(), hi: toSimp(state.view.hi) };
+  // 按简体注音，再换上当前简繁的字形（逐字对齐）
   state.ann = {
-    title: annotate([splitTitle(p.title).main], { ...o, prefix: "t", hi: "" }),
-    lines: annotate(p.lines, o),
+    title: glyphs(annotate([splitTitle(simp.title).main], { ...o, prefix: "t", hi: "" }), [splitTitle(disp.title).main]),
+    lines: glyphs(annotate(simp.lines, o), disp.lines),
   };
   applyDisplay();
-  renderPoem($("poemView"), p, state.ann, { ...state.view, animate, sub: splitTitle(p.title).sub });
+  renderPoem($("poemView"), disp, state.ann, { ...state.view, hi: toDisp(state.view.hi), animate, sub: splitTitle(disp.title).sub, authorKey: simp.author });
   // 底注：课本版切换
   const note = $("cardNote");
   if (state.alt) {
@@ -113,8 +141,17 @@ function draw(animate = false) {
       ? `<span>诗库里的文字和课本不太一样</span><button class="btn ghost" type="button" data-alt>改用课本版</button>`
       : `<span>当前为课本版</span><button class="btn ghost" type="button" data-alt>改回诗库版</button>`;
   } else { note.hidden = true; note.innerHTML = ""; }
-  document.title = `${p.title} · ${p.author ? p.author + " · " : ""}吟诗`;
+  document.title = `${disp.title} · ${disp.author ? disp.author + " · " : ""}吟诗`;
   syncControls();
+}
+
+function glyphs(ann, lines) {
+  ann.forEach((cells, i) => {
+    const chars = Array.from(lines[i] || "");
+    if (chars.length !== cells.length) return;
+    cells.forEach((c, j) => { c.ch = chars[j]; });
+  });
+  return ann;
 }
 
 function syncControls() {
@@ -146,7 +183,7 @@ function setVeil(on) {
 
 /* ---------------- 本地检索（课本精选） ---------------- */
 function localSearch(q) {
-  const k = q.replace(/[\s，。！？、；：,.!?]/g, "");
+  const k = toSimp(q).replace(/[\s，。！？、；：,.!?]/g, "");
   if (!k) return [];
   const hits = [];
   DAILY.forEach((d, i) => {
@@ -188,12 +225,14 @@ function firstLineWith(p, q) {
   return (k && p.lines.find((l) => hanOnly(l).includes(k))) || p.lines[0] || "";
 }
 
-const poemKey = (p) => baseTitle(p.title) + "|" + p.author;
+const poemKey = (p) => { const s = view(p).simp; return baseTitle(s.title) + "|" + s.author; };
 function resItem(p, i, q, badge) {
+  const d = view(p).disp;
+  q = toDisp(q);
   return `<li><button class="res" type="button" data-i="${i}">
-      <span class="res-t">${hl(p.title, q)}${badge ? `<span class="res-badge">${badge}</span>` : ""}</span>
-      <span class="res-m">${esc(p.author)} · ${esc(p.dynasty)}</span>
-      <span class="res-l">${hl(firstLineWith(p, q), q)}</span>
+      <span class="res-t">${hl(d.title || "（无题）", q)}${badge ? `<span class="res-badge">${badge}</span>` : ""}</span>
+      <span class="res-m">${esc(d.author)}${d.dynasty ? " · " + esc(d.dynasty) : ""}</span>
+      <span class="res-l">${hl(firstLineWith(d, q), q)}</span>
     </button></li>`;
 }
 function renderResults() {
@@ -202,23 +241,25 @@ function renderResults() {
   const au = author && author.list.length ? author : null;
   const items = [];
   const html = [];
-  let localShown = local;
+  const push = (p, badge, hq = q) => { html.push(resItem(p, items.length, hq, badge)); items.push(p); };
   if (au) {
-    // 课本里也有的，用课本版并标「课本」，下面不再重复
-    const byKey = new Map(local.map((p) => [poemKey(p), p]));
-    const inAu = new Set();
-    html.push(`<li class="res-sec">${esc(au.name)}的诗</li>`);
-    au.list.forEach((p) => {
-      const t = byKey.get(poemKey(p)); if (t) inAu.add(poemKey(p));
-      html.push(resItem(t || p, items.length, "", t ? "课本" : "")); items.push(t || p);
-    });
-    localShown = local.filter((p) => !inAu.has(poemKey(p)));
-    if (au.hasMore) html.push(`<li class="res-more"><button class="btn text" type="button" data-more-author ${au.loading ? "disabled" : ""}>${au.loading ? "正在翻…" : `更多${esc(au.name)}的诗`}</button></li>`);
-    if (localShown.length || remote.length) html.push(`<li class="res-sec">诗名与诗句</li>`);
+    // 课本精选（小小一节）→ 「某某的诗」（可一直加载更多）→ 诗名与诗句
+    const top = local.slice(0, 6);
+    const topKeys = new Set(top.map(poemKey));
+    if (top.length) { html.push(`<li class="res-sec">课本精选</li>`); top.forEach((p) => push(p, "课本")); }
+    const name = toDisp(au.name);
+    html.push(`<li class="res-sec res-sec-au">${esc(name)}的诗${au.total ? `<small>共 ${au.total} 首</small>` : ""}</li>`);
+    au.list.filter((p) => !topKeys.has(poemKey(p))).forEach((p) => push(p, "", ""));
+    if (au.hasMore) html.push(`<li class="res-more"><button class="btn text" type="button" data-more-author ${au.loading ? "disabled" : ""}>${au.loading ? "正在翻…" : `加载更多 ${esc(name)} 的诗（已显示 ${au.list.length}${au.total ? " / " + au.total : ""}）`}</button></li>`);
+    const rest = local.slice(6).filter((p) => !au.keys.has(poemKey(p)));
+    if (rest.length || remote.length) html.push(`<li class="res-sec">诗名与诗句</li>`);
+    rest.forEach((p) => push(p, "课本"));
+    remote.forEach((p) => push(p, ""));
+  } else {
+    local.forEach((p) => push(p, "课本"));
+    remote.forEach((p) => push(p, ""));
   }
-  localShown.forEach((p) => { html.push(resItem(p, items.length, q, "课本")); items.push(p); });
-  remote.forEach((p) => { html.push(resItem(p, items.length, q, "")); items.push(p); });
-  if (!items.length) { ol.innerHTML = q ? "" : `<li class="res-empty">输入诗名、诗句或作者，回车搜索整个诗库</li>`; ol._items = []; return; }
+  if (!items.length) { ol.innerHTML = q ? "" : `<li class="res-empty">输入诗名、诗句或诗人，回车搜索整个诗库</li>`; ol._items = []; return; }
   ol.innerHTML = html.join("");
   ol._items = items;
 }
@@ -242,46 +283,51 @@ async function fullSearch(q, page = 1) {
   clearTimeout(liveTimer);
   if (!q) return;
   openSheet(isMobile() ? q : undefined);
-  const k = hanOnly(q);
-  // 2–4 个字、像人名：顺带查「这位作者的诗」，有就排在最前面
-  const asAuthor = page === 1 && k.length >= 2 && k.length <= 4 && k === q.replace(/\s+/g, "");
+  const k = toSimp(hanOnly(q));
+  // 2–4 个字、像人名：同时按诗人搜，有就单列一节「某某的诗」
+  const asAuthor = page === 1 && Array.from(k).length >= 2 && Array.from(k).length <= 4 && k === toSimp(q.replace(/\s+/g, ""));
   if (page === 1) state.search = { q, page: 1, local: localSearch(q), remote: [], author: null };
   renderResults();
   setStatus(`<span class="loading">正在翻诗库…</span>`);
   $("btnMore").hidden = true;
   const [sr, ar] = await Promise.allSettled([
-    api.search(q, page),
-    asAuthor ? api.authorPoems(k, 1) : Promise.resolve(null),
+    api.search(toApi(q), page),
+    asAuthor ? api.authorPoems(k, 1, sameName) : Promise.resolve(null),
   ]);
   if (state.search.q !== q) return;   // 期间又搜了别的
   if (ar.status === "fulfilled" && ar.value && ar.value.list.length) {
-    state.search.author = { name: k, list: ar.value.list, page: 1, hasMore: ar.value.hasMore };
+    const v = ar.value;
+    state.search.author = { name: k, list: v.list, page: 1, hasMore: v.hasMore, total: v.total, keys: new Set(v.list.map(poemKey)) };
   }
   const au = state.search.author;
-  const seen = new Set([...state.search.local, ...(au ? au.list : [])].map(poemKey));
+  // 诗人那一节已经列了的，不在「诗名与诗句」里重复；作者就是这位诗人的也交给那一节
+  const skip = (p) => au && (au.keys.has(poemKey(p)) || sameName(p.author, k));
+  const seen = new Set(state.search.local.map(poemKey));
   let hasMore = false;
   if (sr.status === "fulfilled") {
-    const fresh = sr.value.list.filter((p) => !seen.has(poemKey(p)));
-    state.search.remote = page === 1 ? fresh : state.search.remote.concat(fresh.filter((p) => !state.search.remote.some((r) => poemKey(r) === poemKey(p))));
+    const fresh = sr.value.list.filter((p) => !seen.has(poemKey(p)) && !skip(p));
+    const have = new Set(state.search.remote.map(poemKey));
+    state.search.remote = page === 1 ? fresh : state.search.remote.concat(fresh.filter((p) => !have.has(poemKey(p))));
     state.search.page = page;
     hasMore = sr.value.hasMore;
+    state.search.total = sr.value.total;
   }
   renderResults();
   $("btnMore").hidden = !hasMore;
   const n = new Set([...state.search.local, ...state.search.remote, ...(au ? au.list : [])].map(poemKey)).size;
-  if (sr.status === "fulfilled") {
-    setStatus(n ? `找到 ${n}${hasMore || (au && au.hasMore) ? "+" : ""} 首，点一首读` : `没有找到「${esc(q)}」，换个说法试试`);
+  if (sr.status === "fulfilled" || au) {
+    const auLine = au ? `${esc(toDisp(au.name))}的诗${au.total ? ` ${au.total} 首` : ""}` : "";
+    setStatus(n ? (au ? `${auLine} · 点一首读` : `找到 ${n}${hasMore ? "+" : ""} 首，点一首读`) : `没有找到「${esc(q)}」，换个说法试试`);
     return;
   }
   const e = sr.reason || {};
   if (e.kind === "short") {
-    // 诗库不支持一两个字的全文搜索（公共实例）：给出能用的去处
+    // 主诗库连不上、备用诗库不支持一两个字的全文搜索：给出能用的去处
     const btns = [];
-    const titleHit = state.search.local.some((p) => baseTitle(p.title).includes(k));
-    if (!au && k.length >= 2 && k.length <= 4 && !titleHit) btns.push(`<button class="btn ghost" type="button" data-act="author" data-v="${esc(k)}">随机一首「${esc(k)}」的诗</button>`);
-    if (k.length === 1) btns.push(`<button class="btn ghost" type="button" data-act="feihua" data-v="${esc(k)}">飞花令「${esc(k)}」</button>`);
+    if (asAuthor) btns.push(`<button class="btn ghost" type="button" data-act="author" data-v="${esc(k)}">随机一首「${esc(toDisp(k))}」的诗</button>`);
+    if (Array.from(k).length === 1) btns.push(`<button class="btn ghost" type="button" data-act="feihua" data-v="${esc(k)}">飞花令「${esc(toDisp(k))}」</button>`);
     const lead = n ? `找到 ${n} 首。` : "";
-    setStatus(`${lead}诗库暂不支持一两个字的全文搜索，可以多输几个字。${btns.length ? "<br>" + btns.join("") : ""}`);
+    setStatus(`${lead}${esc(e.message)}，可以多输几个字。${btns.length ? "<br>" + btns.join("") : ""}`);
     return;
   }
   setStatus(`${esc(e.message || "搜索失败")}${n ? " · 先看看找到的这些" : ""}`);
@@ -292,14 +338,22 @@ async function moreAuthor() {
   if (!au || au.loading) return;
   au.loading = true; renderResults();
   try {
-    const r = await api.authorPoems(au.name, au.page + 1);
-    const have = new Set(au.list.map(poemKey));
-    au.list = au.list.concat(r.list.filter((p) => !have.has(poemKey(p))));
+    const r = await api.authorPoems(au.name, au.page + 1, sameName);
+    const fresh = r.list.filter((p) => !au.keys.has(poemKey(p)));
+    fresh.forEach((p) => au.keys.add(poemKey(p)));
+    au.list = au.list.concat(fresh);
     au.page += 1; au.hasMore = r.hasMore;
-    const ids = new Set(au.list.map(poemKey));
-    state.search.remote = state.search.remote.filter((p) => !ids.has(poemKey(p)));
+    state.search.remote = state.search.remote.filter((p) => !au.keys.has(poemKey(p)));
   } catch (e) { toast(e.message || "加载失败"); }
   finally { au.loading = false; renderResults(); }
+}
+
+// 「更多 某某 的诗」：打开搜索层，列出这位诗人的诗
+function authorSearch(name) {
+  closePop();
+  $("q").value = toDisp(name); $("q2").value = toDisp(name);
+  openSheet(toDisp(name));
+  fullSearch(toDisp(name));
 }
 
 /* ---------------- 随机 / 飞花令 ---------------- */
@@ -309,13 +363,15 @@ async function doRandom(params = null) {
   busy = true;
   const f = state.filters;
   const p = params || { dynasty: f.dynasty, type: f.types, author: f.author };
+  const q = {};
+  Object.entries(p).forEach(([k, v]) => { q[k] = Array.isArray(v) ? v.map(toApi) : (v ? toApi(v) : v); });
   setBusy(true);
   try {
-    const poem = await api.random(p);
-    if (!poem || !poem.lines.length) { toast(p.author ? `诗库里没找到「${p.author}」的诗` : "这个条件下没有找到诗，换个条件试试"); return; }
+    const poem = await api.random(q);
+    if (!poem || !poem.lines.length) { toast(p.author ? `诗库里没找到「${toDisp(p.author)}」的诗` : "这个条件下没有找到诗，换个条件试试"); return; }
     setPoem(poem);
   } catch (e) {
-    const pool = p.author ? DAILY.map((_, i) => i).filter((i) => DAILY[i].a === p.author) : DAILY.map((_, i) => i);
+    const pool = p.author ? DAILY.map((_, i) => i).filter((i) => DAILY[i].a === toSimp(p.author)) : DAILY.map((_, i) => i);
     if (pool.length) {
       let i = pool[Math.floor(Math.random() * pool.length)];
       if (state.poem && state.poem.dailyIndex === i && pool.length > 1) i = pool[(pool.indexOf(i) + 1) % pool.length];
@@ -333,11 +389,12 @@ async function doFeihua(ch) {
   busy = true; setBusy(true);
   store.set("fh", ch);
   try {
-    const poem = await api.random({ char: ch });
-    if (!poem || !poem.lines.length) throw new api.ApiError("empty", `诗库里没找到含「${ch}」的诗`);
+    const poem = await api.random({ char: toApi(ch) });
+    if (!poem || !poem.lines.length) throw new api.ApiError("empty", `诗库里没找到含「${toDisp(ch)}」的诗`);
     setPoem(poem, { hi: ch });
   } catch (e) {
-    const pool = DAILY.map((_, i) => i).filter((i) => DAILY[i].lines.join("").includes(ch));
+    const sc = toSimp(ch);
+    const pool = DAILY.map((_, i) => i).filter((i) => DAILY[i].lines.join("").includes(sc));
     if (pool.length) setPoem(dailyPoem(pool[Math.floor(Math.random() * pool.length)]), { hi: ch });
     toast(`${e.message}${pool.length ? "，先从课本里找一首" : ""}`, 3200);
   } finally { busy = false; setBusy(false); }
@@ -417,6 +474,19 @@ function setReading(key, py) {
   toast(!py || py === cell.auto ? `已恢复「${cell.ch}」默认读音` : `「${cell.ch}」改读 ${py}，本诗会记住`);
 }
 
+function authorPop(el) {
+  if (popAnchor === el) { closePop(); return; }
+  closePop();
+  const name = el.dataset.author, d = toDisp(name);
+  openPop(`
+    <h3><b class="pop-au">${esc(d)}</b></h3>
+    <div class="pop-col">
+      <button class="btn solid" type="button" data-author-more="${esc(name)}">更多 ${esc(d)} 的诗</button>
+      <button class="btn ghost" type="button" data-author-rand="${esc(name)}">随机一首 ${esc(d)} 的诗</button>
+    </div>
+  `, el, { cls: "pop-author" });
+}
+
 function feihuaPop(anchor) {
   if (popAnchor === anchor) { closePop(); return; }
   closePop();
@@ -458,10 +528,17 @@ function settingsPop(anchor) {
         </div>
       </div>`).join("")}
       <div class="set-row">
+        <b>简繁</b>
+        <div class="seg seg-sm" role="radiogroup" aria-label="简体或繁体">
+          ${Object.entries(LANGS).map(([k, [name]]) => segBtn("data-lang", k, name, state.lang === k)).join("")}
+        </div>
+      </div>
+      <div class="set-row">
         <b>竖排方向</b>
         <div class="seg seg-sm" role="radiogroup" aria-label="竖排方向">
           ${segBtn("data-vdir", "rl", "从右到左", state.view.vdir === "rl")}${segBtn("data-vdir", "lr", "从左到右", state.view.vdir === "lr")}
         </div>
+        <small>竖排时生效；在横排、田字格下点它会切到竖排</small>
       </div>
       <button class="btn text set-reset" type="button" data-reset-display>恢复默认</button>
       <p class="set-sub">读音</p>
@@ -486,11 +563,25 @@ function syncDisplayButtons() {
   document.querySelectorAll("#pop [data-vdir]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.vdir === state.view.vdir)));
   document.querySelectorAll("#pop [data-font]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.font === fonts.current())));
 }
+const DISP_LABEL = { size: "字号", py: "拼音", lh: "行距" };
 function setDisplay(k, v) {
   if (!DISPLAY[k] || !DISPLAY[k][v]) return;
   state.display[k] = v; store.set("display", state.display);
   syncDisplayButtons();
   if (state.poem) { applyDisplay(); fit($("poemView"), state.view.mode); }
+  previewBehindSheet();
+  toast(`${DISP_LABEL[k]}：${DISPLAY[k][v][0]}`, 1200);
+}
+// 手机上设置是底部面板，会挡住诗文：改完把诗笺滚到面板上方，让人看得到变化
+function previewBehindSheet() {
+  const pop = $("pop");
+  if (pop.hidden || !pop.classList.contains("as-sheet")) return;
+  const body = document.querySelector("#poemView .poem-body");
+  if (!body) return;
+  const free = pop.getBoundingClientRect().top;
+  const r = body.getBoundingClientRect();
+  const want = Math.max(8, Math.min(free - Math.min(r.height, free - 16) - 8, 60));
+  window.scrollBy({ top: r.top - want, behavior: "smooth" });
 }
 function resetDisplay() {
   state.display = { ...DISPLAY_DEFAULT }; store.del("display");
@@ -503,7 +594,27 @@ function resetDisplay() {
 function setVdir(d) {
   state.view.vdir = d === "lr" ? "lr" : "rl"; store.set("vdir", state.view.vdir);
   document.querySelectorAll("#pop [data-vdir]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.vdir === state.view.vdir)));
+  const label = state.view.vdir === "lr" ? "从左到右" : "从右到左";
+  if (state.view.mode !== "v") { state.view.mode = "v"; store.set("mode", "v"); toast(`已切到竖排 · ${label}`, 1600); }
+  else toast(`竖排${label}`, 1200);
   draw(false);
+  previewBehindSheet();
+}
+
+async function setLang(l) {
+  if (!LANGS[l]) return;
+  if (l === "hant" && !zh.ready()) {
+    toast("正在载入繁体字表…", 1600);
+    try { await zh.load(); } catch (e) { toast("繁体字表没有载入，请检查网络"); return; }
+  }
+  state.lang = l; store.set("lang", l);
+  api.setLang(LANGS[l][1]);
+  document.documentElement.lang = LANGS[l][1];
+  document.querySelectorAll("#pop [data-lang]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lang === l)));
+  if (state.poem) draw(false);
+  if (!$("sheet").hidden) renderResults();
+  previewBehindSheet();
+  toast(l === "hant" ? "已切换为繁体" : "已切换为简体", 1200);
 }
 
 /* ---------------- 筛选抽屉 ---------------- */
@@ -533,7 +644,17 @@ function toggleDrawer(force) {
   const open = force !== undefined ? force : d.hidden;
   d.hidden = !open;
   $("btnFilter").setAttribute("aria-expanded", String(open));
-  if (open) { $("fAuthor").value = state.filters.author; loadMeta(); }
+  if (open) { $("fAuthor").value = toDisp(state.filters.author); drawPoets(); loadMeta(); }
+}
+function drawPoets() {
+  const cur = state.filters.author;
+  $("chipsPoet").innerHTML = POETS.map((n) => `<button class="chip chip-sm" type="button" data-poet="${esc(n)}" aria-pressed="${n === cur}">${esc(toDisp(n))}</button>`).join("");
+  $("poetList").innerHTML = POETS.map((n) => `<option value="${esc(toDisp(n))}"></option>`).join("");
+}
+function setPoetFilter(v) {
+  state.filters.author = toSimp(String(v || "").trim());
+  saveFilters();
+  $("chipsPoet").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.poet === state.filters.author)));
 }
 function saveFilters() { store.set("filters", state.filters); syncControls(); }
 
@@ -590,6 +711,7 @@ function bind() {
       line.classList.toggle("veiled", s.has(li));
       return;
     }
+    const au = e.target.closest("[data-author]"); if (au) { authorPop(au); return; }
     const c = e.target.closest("ruby.c"); if (c) charPop(c);
   });
   $("poemView").addEventListener("keydown", (e) => {
@@ -616,6 +738,9 @@ function bind() {
     const fh = e.target.closest("[data-fh-ch]"); if (fh) { doFeihua(fh.dataset.fhCh); return; }
     const fo = e.target.closest("[data-font]"); if (fo) { setFont(fo.dataset.font); return; }
     const vd = e.target.closest("[data-vdir]"); if (vd) { setVdir(vd.dataset.vdir); return; }
+    const lg = e.target.closest("[data-lang]"); if (lg) { setLang(lg.dataset.lang); return; }
+    const am = e.target.closest("[data-author-more]"); if (am) { authorSearch(am.dataset.authorMore); return; }
+    const ar = e.target.closest("[data-author-rand]"); if (ar) { closePop(); doRandom({ author: ar.dataset.authorRand }); return; }
     const ds = e.target.closest("[data-disp-size],[data-disp-py],[data-disp-lh]");
     if (ds) { const k = ["size", "py", "lh"].find((x) => ds.hasAttribute("data-disp-" + x)); setDisplay(k, ds.getAttribute("data-disp-" + k)); return; }
     if (e.target.closest("[data-reset-display]")) { resetDisplay(); return; }
@@ -641,31 +766,37 @@ function bind() {
     const d = e.target.closest("[data-dyn]");
     if (d) { state.filters.dynasty = state.filters.dynasty === d.dataset.dyn ? "" : d.dataset.dyn; saveFilters();
       $("chipsDyn").querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.dyn === state.filters.dynasty))); return; }
+    const po = e.target.closest("[data-poet]");
+    if (po) { const n = state.filters.author === po.dataset.poet ? "" : po.dataset.poet; $("fAuthor").value = toDisp(n); setPoetFilter(n); return; }
     const t = e.target.closest("[data-type]");
     if (t) { const s = new Set(state.filters.types); s.has(t.dataset.type) ? s.delete(t.dataset.type) : s.add(t.dataset.type); state.filters.types = [...s]; saveFilters();
       t.setAttribute("aria-pressed", String(s.has(t.dataset.type))); return; }
   });
-  $("fAuthor").addEventListener("change", (e) => { state.filters.author = e.target.value.trim(); saveFilters(); });
-  $("btnFilterGo").addEventListener("click", () => { state.filters.author = $("fAuthor").value.trim(); saveFilters(); toggleDrawer(false); doRandom(); });
-  $("btnFilterClear").addEventListener("click", () => { state.filters = { dynasty: "", types: [], author: "" }; $("fAuthor").value = ""; saveFilters();
+  $("fAuthor").addEventListener("input", (e) => setPoetFilter(e.target.value));
+  $("fAuthor").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("btnFilterGo").click(); } });
+  $("btnFilterGo").addEventListener("click", () => { setPoetFilter($("fAuthor").value); toggleDrawer(false); doRandom(); });
+  $("btnPoetList").addEventListener("click", () => { const n = toSimp($("fAuthor").value.trim()); if (n) { toggleDrawer(false); authorSearch(n); } else { toast("先填一位诗人"); $("fAuthor").focus(); } });
+  $("btnFilterClear").addEventListener("click", () => { state.filters = { dynasty: "", types: [], author: "" }; $("fAuthor").value = ""; saveFilters(); drawPoets();
     document.querySelectorAll("#drawer .chip").forEach((c) => c.setAttribute("aria-pressed", "false")); });
 
   // 导出
   $("btnPrint").addEventListener("click", async () => {
-    if (state.poem) await fonts.ready(state.poem.title + state.poem.lines.join(""));
+    const d = state.disp || state.poem;
+    if (d) await fonts.ready(d.title + d.lines.join(""));
     window.print();
   });
   $("btnCopy").addEventListener("click", async () => {
     if (!state.ann) return;
-    toast((await copyText(poemToText(state.poem, state.ann))) ? "已复制带拼音的文本" : "复制失败，请手动选择");
+    toast((await copyText(poemToText(state.disp || state.poem, state.ann))) ? "已复制带拼音的文本" : "复制失败，请手动选择");
   });
   $("btnImage").addEventListener("click", async () => {
     if (!state.poem) return;
     toast("正在研墨…", 1200);
     try {
-      await fonts.ready(state.poem.title + state.poem.lines.join("") + (state.poem.author || "") + (state.poem.dynasty || ""));
+      const d = state.disp || state.poem;
+      await fonts.ready(d.title + d.lines.join("") + (d.author || "") + (d.dynasty || ""));
       const blob = await cardToPNG($("poem"));
-      download(blob, `吟诗-${baseTitle(state.poem.title) || "古诗"}.png`);
+      download(blob, `吟诗-${baseTitle((state.disp || state.poem).title) || "古诗"}.png`);
       toast("图片已导出");
     } catch (e) { console.warn(e); toast("导出失败，可以先用打印"); }
   });
@@ -696,10 +827,14 @@ function bind() {
 async function boot() {
   bind();
   syncControls();
+  if (state.lang === "hant") {
+    document.documentElement.lang = "zh-Hant";
+    try { await zh.load(); } catch (e) { state.lang = "hans"; api.setLang("zh-Hans"); console.warn(e); }
+  }
   try {
     const [daily, fixes] = await Promise.all([
-      fetch("poem/daily-poems.json").then((r) => r.json()),
-      fetch("poem/poem-readings.json").then((r) => r.json()),
+      fetch("poem/daily-poems.json" + VQ).then((r) => r.json()),
+      fetch("poem/poem-readings.json" + VQ).then((r) => r.json()),
     ]);
     DAILY = daily.poems || [];
     loadFixes(fixes);

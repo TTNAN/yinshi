@@ -36,7 +36,9 @@ function cellHTML(c) {
 export function renderPoem(root, poem, ann, view) {
   seq = 0;
   const titleHTML = ann.title.map((cells) => cells.map(cellHTML).join("")).join("");
-  const meta = [poem.dynasty, poem.author].filter(Boolean).map(esc).join('<span class="sep">·</span>');
+  // 作者名可点：更多这位诗人的诗
+  const au = poem.author ? `<button class="meta-au" type="button" data-author="${esc(view.authorKey || poem.author)}" title="更多${esc(poem.author)}的诗" aria-haspopup="true">${esc(poem.author)}</button>` : "";
+  const meta = [poem.dynasty ? esc(poem.dynasty) : "", au].filter(Boolean).join('<span class="sep">·</span>');
   const tags = [
     view.today ? '<span class="tag-today" title="今日一诗">今日</span>' : "",
     view.tag ? `<span class="tag-src">${esc(view.tag)}</span>` : "",

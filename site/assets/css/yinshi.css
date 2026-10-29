@@ -525,3 +525,27 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .loading::after { content: "…"; animation: dots 1.2s steps(3) infinite; display: inline-block; width: 1em; overflow: hidden; vertical-align: bottom; }
 @keyframes dots { from { width: 0; } }
 code { font-family: var(--py); font-size: .9em; background: rgba(122,111,98,.1); padding: 0 4px; border-radius: 4px; }
+
+/* ---- 诗人筛选 · 作者名 · 搜索分节 · 手机设置面板（v3） ---- */
+.drawer-poet { display: grid; gap: 8px; }
+.chips-poet { gap: 5px; }
+.chip.chip-sm { padding: 3px 10px; font-size: 13px; }
+.drawer-go h2 { visibility: hidden; }
+.meta-au { font: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; border-bottom: 1px dashed transparent; touch-action: manipulation; }
+.meta-au:hover, .meta-au:focus-visible, .meta-au[aria-expanded="true"] { color: var(--zhu); border-bottom-color: currentColor; outline: 0; }
+.poem.m-v .meta-au { writing-mode: inherit; }
+.pop-col { display: grid; gap: 8px; }
+.pop-col .btn { justify-content: center; height: 34px; font-size: 14px; }
+.pop h3 b.pop-au { font-size: 22px; }
+.results li.res-sec small { margin-left: .8em; letter-spacing: .05em; color: var(--ink-4); }
+.results li.res-sec-au { color: var(--zhu); }
+.pop button, .seg button, .chip, .btn { touch-action: manipulation; }
+.set-row small { grid-column: 1 / -1; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+/* 手机上设置面板不要盖住整张诗笺：限高、可滚动，改完自动把诗文滚到面板上方 */
+@media (max-width: 760px) {
+  .pop.pop-set.as-sheet { max-height: 50svh; }
+  .pop.pop-set.as-sheet .set-row { padding: 5px 4px; }
+}
+@media print { .meta-au { border: 0 !important; color: inherit !important; } }
+/* 底部设置面板打开时，提示挪到顶上，不挡按钮 */
+body:has(.pop.as-sheet:not([hidden])) .toast { top: calc(env(safe-area-inset-top, 0px) + 72px); bottom: auto; }

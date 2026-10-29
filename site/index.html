@@ -25,7 +25,7 @@
 })();
 </script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/yinshi.css">
+<link rel="stylesheet" href="assets/css/yinshi.css?v=20261029">
 </head>
 <body>
 <a class="skip" href="#poem">跳到诗文</a>
@@ -51,9 +51,9 @@
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-4 1.5-7 4.5-8-1 3.5-1.5 6-4.5 8Zm0 0c-4 0-7-1.5-8-4.5 3.5 1 6 1.5 8 4.5Zm0 0c0 4-1.5 7-4.5 8 1-3.5 1.5-6 4.5-8Zm0 0c4 0 7 1.5 8 4.5-3.5-1-6-1.5-8-4.5Z"/></svg>
       <span>飞花令</span>
     </button>
-    <button class="btn ghost icon-only" id="btnFilter" type="button" aria-expanded="false" aria-controls="drawer" title="朝代 · 体裁">
+    <button class="btn ghost icon-only" id="btnFilter" type="button" aria-expanded="false" aria-controls="drawer" title="朝代 · 体裁 · 诗人">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
-      <span class="sr">朝代与体裁</span><i class="dot" hidden></i>
+      <span class="sr">朝代、体裁与诗人</span><i class="dot" hidden></i>
     </button>
   </nav>
 </header>
@@ -69,9 +69,19 @@
       <div class="chips" id="chipsType" role="group" aria-label="体裁"></div>
     </div>
     <div class="drawer-row">
-      <h2>作者</h2>
+      <h2>诗人</h2>
+      <div class="drawer-poet">
+        <div class="drawer-author">
+          <input id="fAuthor" type="text" list="poetList" placeholder="如：李白" aria-label="诗人" autocomplete="off">
+          <datalist id="poetList"></datalist>
+          <button class="btn ghost" id="btnPoetList" type="button">看这位诗人的诗</button>
+        </div>
+        <div class="chips chips-poet" id="chipsPoet" role="group" aria-label="常见诗人"></div>
+      </div>
+    </div>
+    <div class="drawer-row drawer-go">
+      <h2></h2>
       <div class="drawer-author">
-        <input id="fAuthor" type="text" placeholder="如：李白" aria-label="作者">
         <button class="btn solid" id="btnFilterGo" type="button">按条件随机一首</button>
         <button class="btn text" id="btnFilterClear" type="button">清除</button>
       </div>
@@ -143,8 +153,23 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
-<script src="poem/config.js"></script>
+<script src="poem/config.js?v=20261029"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
-<script type="module" src="assets/js/main.js"></script>
+<!-- 发版时把所有 ?v= 改成新的版本号（tools/bump-version.sh），避免浏览器拿旧缓存的脚本和样式拼在一起 -->
+<script type="importmap">
+{
+  "imports": {
+    "./assets/js/api.js": "./assets/js/api.js?v=20261029",
+    "./assets/js/exporter.js": "./assets/js/exporter.js?v=20261029",
+    "./assets/js/fonts.js": "./assets/js/fonts.js?v=20261029",
+    "./assets/js/main.js": "./assets/js/main.js?v=20261029",
+    "./assets/js/reading.js": "./assets/js/reading.js?v=20261029",
+    "./assets/js/render.js": "./assets/js/render.js?v=20261029",
+    "./assets/js/store.js": "./assets/js/store.js?v=20261029",
+    "./assets/js/zh.js": "./assets/js/zh.js?v=20261029"
+  }
+}
+</script>
+<script type="module" src="assets/js/main.js?v=20261029"></script>
 </body>
 </html>

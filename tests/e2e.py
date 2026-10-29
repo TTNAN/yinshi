@@ -11,6 +11,7 @@ SITE = os.path.join(HERE, "..", "site")
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "screens")
 os.makedirs(OUT, exist_ok=True)
 FX = json.load(open(os.path.join(HERE, "fixtures", "api.json"), encoding="utf-8"))
+FXH = json.load(open(os.path.join(HERE, "fixtures", "api-hant.json"), encoding="utf-8"))   # 同一批数据的繁体版（OpenCC 转换）
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -19,10 +20,10 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 BASE = f"http://127.0.0.1:{srv.server_address[1]}/"
 
 calls, errors, results = [], [], {}
-# 模拟两种诗库：public = 公共实例现状（搜索至少 3 个字、/poems 忽略 author）；
-# selfhost = 自建实例（1–2 字可搜、/poems?author= 列出作者的诗）
-MODE = {"api": "public"}
-# 分段运行：YINSHI_PART=base（原有验收 + 搜索）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
+# 两个诗泉实例：主实例 poetry.llmaix.com/api/v1（单字搜索、type=author、随机直接返回一首诗）；
+# 备用 poetry.palemoky.com/api（搜索至少 3 个字）。MODE["api"] = "down" 时主实例连不上，应自动改用备用实例
+MODE = {"api": "up"}
+# 分段运行：YINSHI_PART=base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
 PART = os.environ.get("YINSHI_PART", "all")
 
 def mock(route):
@@ -30,12 +31,12 @@ def mock(route):
     H = {"access-control-allow-origin": "*", "content-type": "application/json"}
     if u.path.endswith("/search"):
         key = q.get("q", [""])[0]
-        if len(key) < 3 and MODE["api"] == "public":
+        if len(key) < 3 and MODE["api"] != "selfhost":
             return route.fulfill(status=400, headers=H, body=json.dumps({"error": {"code": "BAD_REQUEST", "message": "q must be at least 3 characters"}}))
         body = {"data": FX["search"].get(key, []), "pagination": {"page": 1, "pageSize": 20, "hasMore": False}}
     elif u.path.endswith("/poems"):
         page = int(q.get("page", ["1"])[0])
-        if MODE["api"] == "public":
+        if MODE["api"] != "selfhost":
             body = {"data": FX["poems_unfiltered"], "pagination": {"page": page, "pageSize": 20, "hasMore": True}}
         else:
             pages = FX.get("poems_author_" + q.get("author", [""])[0])
@@ -48,6 +49,37 @@ def mock(route):
         else: body = {"data": FX["random_default"]}
     elif u.path.endswith("/dynasties"): body = {"data": FX["dynasties"]}
     elif u.path.endswith("/types"): body = {"data": FX["types"]}
+    else: return route.fulfill(status=404, headers=H, body="{}")
+    route.fulfill(status=200, headers=H, body=json.dumps(body, ensure_ascii=False))
+
+def mock_v1(route):
+    u = urlparse(route.request.url); q = parse_qs(u.query); calls.append(route.request.url)
+    if MODE["api"] == "down":
+        return route.abort("connectionrefused")
+    H = {"access-control-allow-origin": "*", "content-type": "application/json"}
+    F = FXH if q.get("lang", [""])[0] == "zh-Hant" else FX
+    p = u.path
+    if p.endswith("/poems/search"):
+        key = q.get("q", [""])[0]; typ = q.get("type", ["all"])[0]; page = int(q.get("page", ["1"])[0])
+        if not key:
+            return route.fulfill(status=400, headers=H, body=json.dumps({"error": "query parameter 'q' is required"}))
+        if typ == "author":
+            pages = F.get("poems_author_" + key) or []
+            data = pages[page - 1] if page <= len(pages) else []
+            body = {"data": data, "pagination": {"page": page, "page_size": 50, "total": sum(map(len, pages)), "total_pages": len(pages)}}
+        else:
+            data = F["search"].get(key, [])
+            body = {"data": data, "pagination": {"page": page, "page_size": 30, "total": len(data), "total_pages": 1 if data else 0}}
+    elif p.endswith("/poems/random"):
+        if q.get("char"): poem = F.get("random_char_" + q["char"][0])
+        elif q.get("author"):
+            poem = F.get("random_author_" + q["author"][0])
+            if not poem:
+                return route.fulfill(status=404, headers=H, body=json.dumps({"error": "author not found"}))
+        else: poem = F["random_default"]
+        body = poem
+    elif p.endswith("/dynasties"): body = {"data": FX["dynasties"]}
+    elif p.endswith("/types"): body = {"data": FX["types"]}
     else: return route.fulfill(status=404, headers=H, body="{}")
     route.fulfill(status=200, headers=H, body=json.dumps(body, ensure_ascii=False))
 
@@ -75,9 +107,10 @@ def new_page(browser, w, h, mobile=False):
                               is_mobile=mobile, has_touch=mobile, accept_downloads=True, locale="zh-CN")
     page = ctx.new_page()
     page.route(re.compile(r"https://poetry\.palemoky\.com/.*"), mock)
+    page.route(re.compile(r"https://poetry\.llmaix\.com/.*"), mock_v1)
     page.route(re.compile(r"https://(cdn\.jsdelivr\.net|fonts\.googleapis\.cn|fonts\.gstatic\.cn)/.*"), cdn)
-    page.on("console", lambda m: m.type in ("error", "warning") and errors.append(f"{w}: {m.type}: {m.text} @ {m.location.get('url','')}"))
-    page.on("requestfailed", lambda r: errors.append(f"{w}: requestfailed: {r.url[:90]}"))
+    page.on("console", lambda m: m.type in ("error", "warning") and not (MODE["api"] == "down" and "llmaix" in (m.location.get("url", "") + m.text)) and errors.append(f"{w}: {m.type}: {m.text} @ {m.location.get('url','')}"))
+    page.on("requestfailed", lambda r: MODE["api"] != "down" and errors.append(f"{w}: requestfailed: {r.url[:90]}"))
     page.on("response", lambda r: r.status >= 400 and errors.append(f"{w}: {r.status}: {r.url[:110]}"))
     page.on("pageerror", lambda e: errors.append(f"{w}: pageerror: {e}"))
     return page
@@ -204,37 +237,115 @@ with sync_playwright() as p:
         m.screenshot(path=f"{OUT}/05e-mobile-feihua-chun.png")
         m.context.close()
 
-        # ---- 搜索：自建实例能力（1–2 字、作者诗目） ----
-        MODE["api"] = "selfhost"
+    if PART in ("all", "v3"):
+        # ---- 搜索：主实例（单字搜索、按诗人搜索） ----
+        MODE["api"] = "up"
         pg = new_page(b, 1440, 1000)
         pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 800)
         pg.fill("#q", "李白"); pg.press("#q", "Enter"); settle(pg, 1200)
-        results["sh_libai_section"] = pg.eval_on_selector_all("#results .res-sec", "els => els.map(e => e.textContent)")
-        results["sh_libai_first"] = pg.eval_on_selector_all("#results .res-t", "els => els.slice(0, 4).map(e => e.textContent)")
-        results["sh_libai_status"] = pg.inner_text("#sheetStatus")
-        pg.screenshot(path=f"{OUT}/20-search-libai-selfhost.png")
+        results["libai_sections"] = pg.eval_on_selector_all("#results .res-sec", "els => els.map(e => e.textContent)")
+        results["libai_first"] = pg.eval_on_selector_all("#results .res-t", "els => els.slice(0, 6).map(e => e.textContent)")
+        results["libai_status"] = pg.inner_text("#sheetStatus")
+        results["libai_author_calls"] = [c for c in calls if "type=author" in c]
+        pg.screenshot(path=f"{OUT}/20-search-libai.png")
+        n_before = pg.locator("#results .res").count()
         pg.click("[data-more-author]"); settle(pg, 900)
-        results["sh_libai_after_more"] = pg.locator("#results .res").count()
-        results["sh_libai_more_left"] = pg.locator("[data-more-author]").count()
+        results["libai_more"] = [n_before, pg.locator("#results .res").count(), pg.locator("[data-more-author]").count()]
         pg.fill("#q", "月"); pg.press("#q", "Enter"); settle(pg, 1200)
-        results["sh_yue_titles"] = pg.eval_on_selector_all("#results .res-t", "els => els.map(e => e.textContent)")
-        results["sh_yue_status"] = pg.inner_text("#sheetStatus")
-        pg.screenshot(path=f"{OUT}/21-search-yue-selfhost.png")
+        results["yue_titles"] = pg.eval_on_selector_all("#results .res-t", "els => els.map(e => e.textContent)")
+        results["yue_status"] = pg.inner_text("#sheetStatus")
+        pg.screenshot(path=f"{OUT}/21-search-yue.png")
+        # 诗笺上的作者名：读一首李白的诗 → 点「李白」→「更多 李白 的诗」
+        pg.fill("#q", "静夜思"); pg.press("#q", "Enter"); settle(pg, 900)
+        pg.click("#results .res >> nth=0"); settle(pg, 1600)
+        pg.click("#poemView .meta-au"); settle(pg, 300)
+        results["author_pop"] = pg.inner_text("#pop").replace("\n", " ")
+        pg.screenshot(path=f"{OUT}/23-author-pop.png")
+        pg.click("[data-author-more]"); settle(pg, 1200)
+        results["author_more_sections"] = pg.eval_on_selector_all("#results .res-sec", "els => els.map(e => e.textContent)")
+        pg.keyboard.press("Escape")
+        # 诗人筛选：点常见诗人「杜甫」→ 按条件随机
+        pg.click("#btnFilter"); settle(pg, 700)
+        pg.click('[data-poet="杜甫"]'); settle(pg, 200)
+        results["poet_input"] = pg.input_value("#fAuthor")
+        pg.screenshot(path=f"{OUT}/24-filter-poet.png")
+        n0 = len(calls)
+        pg.click("#btnFilterGo"); settle(pg, 1600)
+        results["poet_random_call"] = [c for c in calls[n0:] if "random" in c]
+        results["poet_random_title"] = pg.inner_text(".poem-title").replace("\n", "")
         pg.context.close()
 
-        # ---- 搜索：公共实例现状（应平稳降级） ----
-        MODE["api"] = "public"
+        # ---- 主实例连不上：自动改用备用实例 ----
+        MODE["api"] = "down"
         pg = new_page(b, 1440, 1000)
         pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 800)
-        pg.fill("#q", "李白"); pg.press("#q", "Enter"); settle(pg, 1200)
-        results["pub_libai_status"] = pg.inner_text("#sheetStatus")
-        results["pub_libai_sections"] = pg.locator("#results .res-sec").count()
-        results["pub_libai_results"] = pg.eval_on_selector_all("#results .res-t", "els => els.map(e => e.textContent)")
-        pg.screenshot(path=f"{OUT}/22-search-libai-public.png")
         n0 = len(calls)
-        pg.fill("#q", "月"); pg.press("#q", "Enter"); settle(pg, 900)
-        results["pub_yue_status"] = pg.inner_text("#sheetStatus")
-        results["pub_yue_calls_after_probe"] = len(calls) - n0   # 已探测到不支持，应为 0
+        pg.fill("#q", "静夜思"); pg.press("#q", "Enter"); settle(pg, 1600)
+        results["down_hosts"] = [urlparse(c).netloc for c in calls[n0:]]
+        results["down_results"] = pg.locator("#results .res").count()
+        pg.fill("#q", "李白"); pg.press("#q", "Enter"); settle(pg, 1200)
+        results["down_libai_status"] = pg.inner_text("#sheetStatus")
+        pg.context.close()
+        MODE["api"] = "up"
+
+        # ---- 设置面板：真实点击每个按钮，诗笺跟着变，刷新后还在 ----
+        def poem_state(page):
+            return page.evaluate("""() => { const v = document.getElementById('poemView'); const cs = getComputedStyle(v);
+              return { fs: v.dataset.fs, cs: cs.getPropertyValue('--cs').trim(), pyr: cs.getPropertyValue('--pyr').trim(), lg: cs.getPropertyValue('--lg').trim(), cls: v.className,
+                       rt: getComputedStyle(document.querySelector('.poem-body ruby.c rt')).fontSize }; }""")
+        for mobile in (False, True):
+            tag = "m" if mobile else "d"
+            pg = new_page(b, 390 if mobile else 1440, 844 if mobile else 1000, mobile=mobile)
+            pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1200)
+            seq = [("size", '[data-disp-size="l"]'), ("py", '[data-disp-py="l"]'), ("lh", '[data-disp-lh="loose"]'), ("vdir", '[data-vdir="lr"]')]
+            out = {"before": poem_state(pg)}
+            pg.click("#btnSettings"); settle(pg, 300)
+            for k, sel in seq:
+                (pg.tap if mobile else pg.click)(sel); settle(pg, 500)
+                out[k] = [pg.get_attribute(sel, "aria-checked"), pg.locator("#pop").is_visible(), poem_state(pg)]
+            pg.screenshot(path=f"{OUT}/25-settings-after-clicks-{tag}.png")
+            pg.keyboard.press("Escape")
+            pg.reload(); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1200)
+            out["after_reload"] = poem_state(pg)
+            pg.click("#btnSettings"); settle(pg, 300)
+            out["after_reload_checked"] = [pg.get_attribute(sel, "aria-checked") for _, sel in seq]
+            results["settings_" + tag] = out
+            pg.context.close()
+
+        # ---- 简 / 繁 ----
+        pg = new_page(b, 1440, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1000)
+        pg.fill("#q", "山行"); pg.press("#q", "Enter"); settle(pg, 700); pg.click("#results .res >> nth=0"); settle(pg, 1200)
+        # 自定义一个读音，切到繁体后应仍然生效
+        pg.click('.poem-body ruby.c:has(.h:text-is("坐"))'); pg.fill(".pop-char input", "zuo3"); pg.press(".pop-char input", "Enter"); settle(pg, 300)
+        cells = "els => els.map(e => e.querySelector('.h').textContent + ':' + e.querySelector('rt').textContent)"
+        hans_cells = pg.eval_on_selector_all(".poem-body ruby.c", cells)
+        pg.click("#btnSettings"); settle(pg, 250); pg.click('[data-lang="hant"]'); settle(pg, 1800); pg.keyboard.press("Escape")
+        hant_cells = pg.eval_on_selector_all(".poem-body ruby.c", cells)
+        results["hant_title"] = pg.inner_text(".poem-title").replace("\n", "")
+        results["hant_meta"] = pg.inner_text(".poem-meta")
+        results["hant_text"] = "".join(c.split(":")[0] for c in hant_cells)
+        results["hant_pinyin_same"] = [c.split(":")[1] for c in hans_cells] == [c.split(":")[1] for c in hant_cells]
+        results["hant_override_kept"] = pg.locator(".poem-body ruby.c.ov").count()
+        results["hant_xie"] = rt_of(pg, "斜")
+        pg.screenshot(path=f"{OUT}/61-hant-horizontal-shanxing.png", full_page=True)
+        pg.context.grant_permissions(["clipboard-read", "clipboard-write"])
+        pg.click("#btnCopy"); settle(pg, 300)
+        results["hant_copy"] = pg.evaluate("navigator.clipboard.readText()")[:80]
+        n0 = len(calls)
+        pg.click("#btnRandom"); settle(pg, 1800)
+        results["hant_random_call"] = [c for c in calls[n0:] if "random" in c]
+        results["hant_random_title"] = pg.inner_text(".poem-title").replace("\n", "")
+        results["hant_random_alt"] = pg.inner_text("#cardNote")
+        pg.reload(); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1800)
+        results["hant_after_reload_title"] = pg.inner_text(".poem-title").replace("\n", "")
+        pg.screenshot(path=f"{OUT}/61-hant-horizontal-daily.png", full_page=True)
+        pg.fill("#q", "李白"); pg.press("#q", "Enter"); settle(pg, 1200)
+        results["hant_search_calls"] = [c for c in calls if "zh-Hant" in c and "search" in c][-2:]
+        results["hant_libai_sections"] = pg.eval_on_selector_all("#results .res-sec", "els => els.map(e => e.textContent)")
+        results["hant_libai_titles"] = pg.eval_on_selector_all("#results .res-t", "els => els.slice(0, 8).map(e => e.textContent)")
+        results["hant_author_lang"] = [c for c in calls if "type=author" in c][-1:]
+        pg.screenshot(path=f"{OUT}/61-hant-search-libai.png")
         pg.context.close()
 
     if PART in ("all", "visual"):
