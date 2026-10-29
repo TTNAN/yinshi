@@ -13,3 +13,6 @@
 
 /poem/*
   Cache-Control: public, max-age=3600
+
+/data/*
+  Cache-Control: public, max-age=3600

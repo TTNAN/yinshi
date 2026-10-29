@@ -50,7 +50,7 @@ export function renderPoem(root, poem, ann, view) {
     return `<p class="line${veiled}" data-li="${li}">${clauses}</p>`;
   }).join("");
 
-  root.className = ["poem", "m-" + view.mode, view.mode === "v" && view.vdir === "lr" ? "v-lr" : "", view.pinyin ? "" : "no-py", view.veil ? "veil" : "", view.animate ? "ink-in" : ""].filter(Boolean).join(" ");
+  root.className = ["poem", "m-" + view.mode, view.mode === "v" && view.vdir === "lr" ? "v-lr" : "", view.pinyin ? "" : "no-py", view.veil ? "veil" : "", view.animate ? "ink-in" : "", "fresh"].filter(Boolean).join(" ");
   root.innerHTML = `<div class="poem-scroll">
     <header class="poem-head">
       <div class="tagline">${tags}</div>
@@ -63,6 +63,8 @@ export function renderPoem(root, poem, ann, view) {
   if (first) first.tabIndex = 0;
   fit(root, view.mode);
   if (view.animate) setTimeout(() => root.classList.remove("ink-in"), 2600);
+  // 新插入的字不需要过渡；两帧之后再打开（点一句显示 / 遮住时才有淡入淡出）
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("fresh")));
 }
 
 // 自适应字号：横排按最长分句定宽，竖排按最长分句定高，田字格按格子定宽

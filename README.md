@@ -28,6 +28,8 @@
   - 诗库里的同名诗若与课本文字不同（如《静夜思》作「床前看月光」），卡片下方会出现「改用课本版」。
 - **导出**：打印（只打印诗笺，干净 A4）、导出 PNG 图片（按屏幕版式逐字绘制，带落款小印）、复制带拼音文本（每行先拼音后汉字）。
 - **手机**：诗笺铺满屏幕，常用操作在底栏；搜索结果和飞花令为底部弹层。
+- **作者与赏析**：宽屏时诗笺左侧是作者生平（朝代、生卒年、字号、简介、代表作，点代表作直接搜），右侧是这首诗的诗意、情感、创作背景；手机上在诗笺下方，默认收起，点「作者」「赏析」展开。没有赏析的诗只显示作者（主诗库能查到生卒年时补上）。
+- **纸面**（设置里）：宣纸（默认）/ 素笺 / 竹简 / 绢本 / 青花 / 夜读（深色）/ 信笺，纹理都是 CSS 与内联 SVG 自绘；还可以「自定义」上传一张背景图——图片在本机缩到 1600px 以内存进浏览器 IndexedDB，**不会上传**，可调遮罩浓淡、换图、移除。导出图片跟随纸面（自定义背景也会画进去），打印始终是白纸黑字。
 - **设置**（诗笺右上角）：
   - 字体：一格一种、名字用它自己的字形显示，共 8 种开源字体：仿宋（朱雀仿宋，默认）/ 宋体（思源宋体）/ 楷体（霞鹜文楷）/ 黑体（思源黑体）/ 小薇（站酷小薇）/ 毛笔（马善政楷书）/ 快乐（站酷快乐体）/ 行书（龙藏体）。只加载选中的那一种，并按字分片下载：朱雀仿宋由本站托管（`site/fonts/zhuque-fangsong/`，92 片），霞鹜文楷走 jsDelivr，其余走 `fonts.googleapis.cn`。后四种只收常用简体字，缺字（多为繁体）时退回宋体。以前选过字体的用户保留原来的选择。
   - 字号（小 / 中 / 大 / 特大）、拼音大小（小 / 中 / 大）、行距（紧凑 / 适中 / 宽松）；放大后一句放不下会在句内换行，不裁切。
@@ -50,7 +52,8 @@
 - 搜索与诗人作品缓存 1 天、诗人 id 缓存 30 天、朝代缓存 7 天（内存 + localStorage）；
 - 客户端排队节流：主诗库每分钟最多 50 次、3 秒内最多 6 次（低于接口的 60 次 / 分钟），备用 20 秒最多 5 次；收到 429 时按 `Retry-After`（读不到时 60 秒）冷却，期间给出提示并用内置课本诗兜底。
 
-> 已知数据情况（2026-10-29 实测）：主诗库目前几乎没有唐诗和宋诗（「李白」只有 9 首词，「杜甫」「王维」「孟浩然」0 首；苏轼 375 首、辛弃疾 630 首多为词）。所以按诗人随机、按条件随机在主诗库找不到时会自动改从备用诗库抽；「某某的诗」列表只能列出主诗库收录的作品。
+3. **全唐诗 / 全宋诗** [chinese-poetry](https://github.com/chinese-poetry/chinese-poetry)（MIT）：主诗库几乎没有唐诗、宋诗（「李白」只有 9 首词），所以「某某的诗」、随机某位诗人、诗名搜索都会并入这份数据（唐诗约 5.7 万首、宋诗约 25 万首；李白 1098 首、杜甫 1470 首、王维 394 首、苏轼诗 2824 首，均为去重后）。本站只托管 `tools/build-cp-index.mjs` 生成的小索引 `site/data/cp/`（诗人 → 作品编号约 140 KB gzip、按诗名前两字分 64 片的诗名索引、唐诗三百首全文），诗的正文由浏览器按「1000 首一块」直接从 [unpkg](https://unpkg.com/chinese-poetry@2.0.1/)（npm 包 chinese-poetry@2.0.1）取，连不上时改用 raw.githubusercontent.com 上同一份数据的固定提交。原数据是繁体，页面用索引里的繁→简单字表转成简体显示（繁體模式照常转回）。
+
 
 ## 部署到 Cloudflare Pages
 
@@ -81,6 +84,10 @@
 | `site/assets/js/reading.js` | 注音：pinyin-pro → 课本修正 → 吟诵旧读 → 用户自定义 |
 | `site/assets/js/render.js` | 诗笺渲染（`<ruby>` 逐字格）与自适应字号 |
 | `site/assets/js/exporter.js` | 导出 PNG（canvas）与带拼音文本 |
+| `site/assets/js/cp.js` | 全唐诗 / 全宋诗：读本站索引，按块从 CDN 取正文、繁→简 |
+| `site/assets/js/themes.js` | 纸面主题与自定义背景（IndexedDB，本机） |
+| `site/data/cp/` | chinese-poetry 索引（`tools/build-cp-index.mjs` 生成） |
+| `site/data/poets.json`、`notes.json` | 作者生平、诗意赏析（`python3 tools/content/build.py` 由 `tools/content/` 生成） |
 | `site/assets/js/api.js` | 诗库客户端（主诗库 snowtraces + 备用诗泉自动切换、游标分页、缓存、排队节流、429 冷却） |
 | `site/assets/js/zh.js` | 简繁转换（按需加载 OpenCC，逐字对齐） |
 | `site/assets/js/fonts.js` | 诗文字体（8 种，按需加载） |
@@ -104,7 +111,7 @@
 
 ```bash
 pip install playwright && python3 -m playwright install chromium
-python3 tests/e2e.py            # 截图输出到 tests/screens/；YINSHI_PART=base / v3 / visual 可分段运行
+python3 tests/e2e.py            # 截图输出到 tests/screens/；YINSHI_PART=base / v3 / v4 / visual 可分段运行
 python3 tests/live_api.py       # 检查真实接口与跨域头
 python3 tests/live_browser.py   # 真实浏览器直连诗库；也可 python3 tests/live_browser.py https://ttnan.github.io/yinshi/
 # 已装系统 Chromium 时：YINSHI_CHROMIUM=/usr/bin/chromium python3 tests/e2e.py
@@ -114,6 +121,8 @@ python3 tests/live_browser.py   # 真实浏览器直连诗库；也可 python3 t
 
 - 代码：MIT © 2026 Caesar (TTNAN)，见 [LICENSE](LICENSE)。
 - 拼音：[pinyin-pro](https://github.com/zh-lx/pinyin-pro)（MIT）。
+- 唐诗、宋诗：[chinese-poetry/chinese-poetry](https://github.com/chinese-poetry/chinese-poetry)（MIT License，© 2016 JackeyGao 及贡献者）。仓库只含由它生成的索引（`site/data/cp/`），正文运行时从 unpkg / GitHub 直接读取。
+- 作者生平与赏析（`site/data/poets.json`、`site/data/notes.json`，96 位诗人、178 首诗）：吟诗原创撰写，源文件在 `tools/content/`。
 - 诗词数据：[snowtraces/poetry-source](https://github.com/snowtraces/poetry-source)（公共接口 poetry-api.snowtraces.com）与 [诗泉 palemoky/chinese-poetry-api](https://github.com/palemoky/chinese-poetry-api)（公共实例 [poetry.palemoky.com](https://poetry.palemoky.com)），运行时通过公开 API 获取，仓库不包含其代码。感谢两个项目的维护者。
 - 简繁转换：[opencc-js](https://github.com/nk2028/opencc-js)（MIT；词典数据来自 OpenCC / opencc-data，Apache-2.0），本地托管，许可证见 `site/vendor/opencc-js-1.4.2/`。
 - 字体：[朱雀仿宋 Zhuque Fangsong](https://github.com/TrionesType/zhuque)（© 2023 浙江璇玑造字 JadeFoci / TrionesType，SIL OFL 1.1，本站托管分片版，来自 [中文网字计划](https://chinese-font.netlify.app) 的 npm 包 `@chinese-fonts/zqfs`，许可证见 `site/fonts/zhuque-fangsong/OFL.txt`）、站酷小薇 ZCOOL XiaoWei、马善政楷书 Ma Shan Zheng、站酷快乐体 ZCOOL KuaiLe、龙藏体 Long Cang（均为 SIL OFL 1.1，选中时经 fonts.googleapis.cn 加载）、思源宋体 / 思源黑体 Noto Serif SC、Noto Sans SC（SIL OFL 1.1，经 fonts.googleapis.cn 加载）、[霞鹜文楷 LXGW WenKai](https://github.com/lxgw/LxgwWenKai)（SIL OFL 1.1，选「楷」时经 jsDelivr 加载）、Noto Serif（拼音，SIL OFL 1.1，本地托管）。Logo 中的「吟」字形取自霞鹜文楷（SIL OFL 1.1）。

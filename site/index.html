@@ -23,11 +23,13 @@
   var k = "fang";
   try { var s = JSON.parse(localStorage.getItem("yinshi:font")); if (s in u) k = s; } catch (e) { /* 存储不可用 */ }
   if (k !== "fang") document.documentElement.setAttribute("data-font", k);
+  /* 纸面主题（自定义背景的图片由 themes.js 从 IndexedDB 取出后再铺上） */
+  try { var t = JSON.parse(localStorage.getItem("yinshi:theme")); if (/^(su|zhu|juan|qinghua|ye|xin|custom)$/.test(t)) document.documentElement.setAttribute("data-theme", t); } catch (e) { /* 存储不可用 */ }
   document.write('<link rel="stylesheet" id="font-' + k + '" href="' + u[k] + '">');
 })();
 </script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291317">
+<link rel="stylesheet" href="assets/css/yinshi.css?v=202610291400">
 </head>
 <body>
 <a class="skip" href="#poem">跳到诗文</a>
@@ -105,6 +107,7 @@
     </div>
   </div>
 
+  <div class="card-wrap">
   <article class="card" id="poem" tabindex="-1" aria-live="polite">
     <button class="card-gear" id="btnSettings" type="button" aria-haspopup="dialog" title="设置">
       <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h9M18 7h1M5 17h1M10 17h9"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
@@ -113,6 +116,16 @@
     <div class="poem" id="poemView"></div>
     <div class="card-note" id="cardNote" hidden></div>
   </article>
+  <!-- 宽屏：诗笺左右两侧；窄屏：诗笺下方可展开的两节（默认收起）。内容来自 data/poets.json、data/notes.json，按需载入 -->
+  <section class="side side-au" id="sideAu" aria-label="作者" hidden>
+    <button class="side-toggle" type="button" aria-expanded="false" aria-controls="sideAuBody"><span>作者</span><i aria-hidden="true"></i></button>
+    <div class="side-body" id="sideAuBody"></div>
+  </section>
+  <section class="side side-note" id="sideNote" aria-label="赏析" hidden>
+    <button class="side-toggle" type="button" aria-expanded="false" aria-controls="sideNoteBody"><span>赏析</span><i aria-hidden="true"></i></button>
+    <div class="side-body" id="sideNoteBody"></div>
+  </section>
+  </div>
 
   <div class="actions" role="group" aria-label="导出">
     <button type="button" class="act" id="btnPrint">
@@ -155,23 +168,23 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
-<script src="poem/config.js?v=202610291317"></script>
+<script src="poem/config.js?v=202610291400"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
 <!-- 发版时把所有 ?v= 改成新的版本号（tools/bump-version.sh），避免浏览器拿旧缓存的脚本和样式拼在一起 -->
 <script type="importmap">
 {
   "imports": {
-    "./assets/js/api.js": "./assets/js/api.js?v=202610291317",
-    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291317",
-    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291317",
-    "./assets/js/main.js": "./assets/js/main.js?v=202610291317",
-    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291317",
-    "./assets/js/render.js": "./assets/js/render.js?v=202610291317",
-    "./assets/js/store.js": "./assets/js/store.js?v=202610291317",
-    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291317"
+    "./assets/js/api.js": "./assets/js/api.js?v=202610291400",
+    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202610291400",
+    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202610291400",
+    "./assets/js/main.js": "./assets/js/main.js?v=202610291400",
+    "./assets/js/reading.js": "./assets/js/reading.js?v=202610291400",
+    "./assets/js/render.js": "./assets/js/render.js?v=202610291400",
+    "./assets/js/store.js": "./assets/js/store.js?v=202610291400",
+    "./assets/js/zh.js": "./assets/js/zh.js?v=202610291400"
   }
 }
 </script>
-<script type="module" src="assets/js/main.js?v=202610291317"></script>
+<script type="module" src="assets/js/main.js?v=202610291400"></script>
 </body>
 </html>

@@ -108,6 +108,16 @@ def cdn(route):
     ct = "text/css" if (url.endswith(".css") or "/css2?" in url) else "font/woff2"
     route.fulfill(status=200, headers={"access-control-allow-origin": "*", "content-type": ct}, body=data)
 
+# 全唐诗 / 全宋诗正文：页面直连 unpkg（备用 raw.githubusercontent.com）。测试里从 tools/.cache 的本地副本喂给页面
+CP_DIR = os.path.join(HERE, "..", "tools", ".cache", "chinese-poetry-2.0.1", "package", "dist", "quantangshi")
+CP_DOWN = {"on": False}
+def cpcdn(route):
+    calls.append(route.request.url)
+    if CP_DOWN["on"] and "unpkg.com" in route.request.url: return route.abort("connectionrefused")
+    fn = os.path.join(CP_DIR, os.path.basename(urlparse(route.request.url).path))
+    if not os.path.exists(fn): return route.fulfill(status=404, headers={"access-control-allow-origin": "*"}, body="{}")
+    route.fulfill(status=200, headers={"access-control-allow-origin": "*", "content-type": "application/json"}, body=open(fn, "rb").read())
+
 def new_page(browser, w, h, mobile=False):
     ctx = browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=2 if mobile else 1,
                               is_mobile=mobile, has_touch=mobile, accept_downloads=True, locale="zh-CN")
@@ -115,8 +125,9 @@ def new_page(browser, w, h, mobile=False):
     page.route(re.compile(r"https://poetry\.palemoky\.com/.*"), mock)
     page.route(re.compile(r"https://poetry-api\.snowtraces\.com/.*"), mock_st)
     page.route(re.compile(r"https://(cdn\.jsdelivr\.net|fonts\.googleapis\.cn|fonts\.gstatic\.cn)/.*"), cdn)
-    page.on("console", lambda m: m.type in ("error", "warning") and not (MODE["api"] == "down" and "snowtraces" in (m.location.get("url", "") + m.text)) and errors.append(f"{w}: {m.type}: {m.text} @ {m.location.get('url','')}"))
-    page.on("requestfailed", lambda r: MODE["api"] != "down" and errors.append(f"{w}: requestfailed: {r.url[:90]}"))
+    page.route(re.compile(r"https://(unpkg\.com/chinese-poetry@|raw\.githubusercontent\.com/chinese-poetry/).*"), cpcdn)
+    page.on("console", lambda m: m.type in ("error", "warning") and not (MODE["api"] == "down" and "snowtraces" in (m.location.get("url", "") + m.text)) and not (CP_DOWN["on"] and "unpkg" in m.location.get("url", "")) and errors.append(f"{w}: {m.type}: {m.text} @ {m.location.get('url','')}"))
+    page.on("requestfailed", lambda r: MODE["api"] != "down" and not (CP_DOWN["on"] and "unpkg" in r.url) and errors.append(f"{w}: requestfailed: {r.url[:90]}"))
     page.on("response", lambda r: r.status >= 400 and errors.append(f"{w}: {r.status}: {r.url[:110]}"))
     page.on("pageerror", lambda e: errors.append(f"{w}: pageerror: {e}"))
     return page
@@ -353,6 +364,145 @@ with sync_playwright() as p:
         results["hant_author_calls"] = [c for c in calls if "/authors" in c][-2:]
         pg.screenshot(path=f"{OUT}/61-hant-search-libai.png")
         pg.context.close()
+
+    if PART in ("all", "v4"):
+        # ---- 全唐诗 / 全宋诗：李白、杜甫、静夜思 ----
+        pg = new_page(b, 1600, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 800)
+        def search(q, ms=1500):
+            pg.fill("#q", q); pg.press("#q", "Enter")
+            pg.wait_for_function("() => !document.querySelector('#sheetStatus .loading')", timeout=20000); settle(pg, 300)
+        uniq = "els => { const k = els.map(e => e.innerText.replace(/\\s+/g, '')); return [k.length, new Set(k).size]; }"
+        search("李白")
+        results["v4_libai_sections"] = pg.eval_on_selector_all("#results .res-sec", "e => e.map(x => x.textContent)")
+        for _ in range(2):
+            n0 = pg.locator("#results .res").count()
+            pg.click("[data-more-author]"); pg.wait_for_function(f"() => document.querySelectorAll('#results .res').length > {n0}", timeout=20000); settle(pg, 200)
+        results["v4_libai_count_unique"] = pg.eval_on_selector_all("#results .res", uniq)
+        results["v4_libai_has_more"] = pg.locator("[data-more-author]").count()
+        results["v4_libai_titles"] = pg.eval_on_selector_all("#results .res-t", "e => e.map(x => x.textContent)")
+        results["v4_libai_titles"] = [t for t in results["v4_libai_titles"] if any(k in t for k in ("静夜思", "将进酒", "望庐山瀑布", "蜀道难"))]
+        pg.screenshot(path=f"{OUT}/70-libai-cp.png")
+        pg.click("#results .res-sec-au ~ li .res >> nth=3"); settle(pg, 1200)
+        results["v4_libai_opened"] = pg.inner_text(".poem-title").replace("\n", "") + " / " + pg.inner_text(".poem-meta")
+        pg.click("#poemView .meta-au"); settle(pg, 300); t0 = pg.inner_text(".poem-title")
+        pg.click("[data-author-rand]"); pg.wait_for_function("t => document.querySelector('.poem-title').innerText !== t", arg=t0, timeout=15000); settle(pg, 600)
+        results["v4_libai_random"] = pg.inner_text(".poem-title").replace("\n", "") + " / " + pg.inner_text(".poem-meta")
+        search("杜甫")
+        results["v4_dufu_sections"] = pg.eval_on_selector_all("#results .res-sec", "e => e.map(x => x.textContent)")
+        results["v4_dufu_count_unique"] = pg.eval_on_selector_all("#results .res", uniq)
+        search("春望"); results["v4_chunwang_first"] = pg.eval_on_selector_all("#results .res", "e => e.slice(0, 3).map(x => x.innerText.split('\\n').slice(0, 2).join(' / '))")
+        search("静夜思"); results["v4_jys_first"] = pg.eval_on_selector_all("#results .res", "e => e.slice(0, 3).map(x => x.innerText.split('\\n').slice(0, 2).join(' / '))")
+        search("将进酒"); results["v4_jjj_first"] = pg.eval_on_selector_all("#results .res", "e => e.slice(0, 3).map(x => x.innerText.split('\\n').slice(0, 2).join(' / '))")
+        pg.screenshot(path=f"{OUT}/71-search-jiangjinjiu.png")
+        pg.click("#results .res >> nth=0"); settle(pg, 1500)
+        results["v4_jjj_note"] = pg.inner_text("#sideNoteBody")[:60]
+        pg.keyboard.press("Escape")
+        # unpkg 连不上：改用 raw.githubusercontent.com
+        CP_DOWN["on"] = True
+        search("王维"); results["v4_wangwei_cdn_fallback"] = [pg.locator("#results .res").count(), [urlparse(c).netloc for c in calls if "chinese-poetry" in c][-2:]]
+        CP_DOWN["on"] = False
+        pg.context.close()
+
+        # ---- 遮字背诵：换版面 / 简繁 / 拼音时，被遮住的字一帧也不能露出来 ----
+        pg = new_page(b, 1440, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1200)
+        pg.click("#togVeil"); settle(pg, 600)
+        pg.evaluate("""() => { window.__flash = []; window.__lines = 0;
+          const chk = (why) => { document.querySelectorAll('#poemView .line').forEach((l) => { window.__lines++;
+              if (!l.classList.contains('veiled')) window.__flash.push(why + ':unveiled-line');
+              l.querySelectorAll('.h').forEach((h) => { const o = +getComputedStyle(h).opacity; if (o > 0.4) window.__flash.push(why + ':opacity ' + o.toFixed(2)); }); }); };
+          new MutationObserver(() => chk('mutation')).observe(document.getElementById('poemView'), { childList: true, subtree: true });
+          const tick = () => { chk('frame'); requestAnimationFrame(tick); }; requestAnimationFrame(tick); }""")
+        seq = ['#modeSeg [data-mode="g"]', '#modeSeg [data-mode="v"]', '#modeSeg [data-mode="h"]', '#modeSeg [data-mode="v"]', '#modeSeg [data-mode="g"]', '#modeSeg [data-mode="h"]', "#togPinyin", "#togPinyin"]
+        for sel in seq: pg.click(sel); settle(pg, 900)
+        pg.click("#btnSettings"); settle(pg, 250); pg.click('[data-lang="hant"]'); settle(pg, 2200); pg.click('[data-lang="hans"]'); settle(pg, 1200); pg.keyboard.press("Escape")
+        pg.click('#modeSeg [data-mode="g"]'); settle(pg, 900)
+        results["v4_veil_flash"] = pg.evaluate("[window.__flash.length, window.__flash.slice(0, 5), window.__lines]")
+        pg.screenshot(path=f"{OUT}/72-veil-tianzige.png")
+        pg.context.close()
+
+        # ---- 侧栏：宽屏两侧（不挤动诗笺）、窄屏下方可展开 ----
+        pg = new_page(b, 1600, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1800)
+        box = lambda sel: pg.evaluate(f"(() => {{ const r = document.querySelector('{sel}').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width)]; }})()")
+        results["v4_side_wide"] = {"card": box("#poem"), "au": box("#sideAu"), "note": box("#sideNote"), "au_text": pg.inner_text("#sideAuBody")[:30], "note_text": pg.inner_text("#sideNoteBody")[:30]}
+        pg.evaluate("document.getElementById('sideAu').hidden = true; document.getElementById('sideNote').hidden = true")
+        results["v4_side_wide"]["card_without"] = box("#poem")
+        pg.evaluate("document.getElementById('sideAu').hidden = false; document.getElementById('sideNote').hidden = false")
+        pg.screenshot(path=f"{OUT}/73-side-panels-desktop.png")
+        pg.click("#btnSettings"); settle(pg, 250); pg.click('[data-lang="hant"]'); settle(pg, 2000); pg.keyboard.press("Escape")
+        results["v4_side_hant"] = pg.inner_text("#sideAuBody")[:24]
+        pg.screenshot(path=f"{OUT}/74-side-panels-hant.png")
+        pg.click("#btnSettings"); settle(pg, 250); pg.click('[data-lang="hans"]'); settle(pg, 800); pg.keyboard.press("Escape")
+        pg.context.close()
+        m = new_page(b, 390, 844, mobile=True)
+        m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1600)
+        card0 = m.evaluate("document.getElementById('poem').getBoundingClientRect().top")
+        results["v4_side_mobile_collapsed"] = m.evaluate("[getComputedStyle(document.getElementById('sideAuBody')).display, getComputedStyle(document.getElementById('sideNoteBody')).display]")
+        m.evaluate("document.getElementById('sideAu').scrollIntoView({block: 'center'})"); settle(m, 300)
+        m.screenshot(path=f"{OUT}/75-side-mobile-collapsed.png")
+        m.tap("#sideAu .side-toggle"); m.tap("#sideNote .side-toggle"); settle(m, 300)
+        results["v4_side_mobile_open"] = m.evaluate("[getComputedStyle(document.getElementById('sideAuBody')).display, document.querySelector('#sideAu .side-toggle').getAttribute('aria-expanded')]")
+        m.evaluate("document.getElementById('sideNote').scrollIntoView({block: 'end'})"); settle(m, 300)
+        m.screenshot(path=f"{OUT}/76-side-mobile-expanded.png")
+        results["v4_card_not_moved"] = m.evaluate(f"Math.abs(document.getElementById('poem').getBoundingClientRect().top + window.scrollY - ({card0}))") < 2
+        m.context.close()
+
+        # ---- 纸面主题：每种截图、对比度、导出图片；自定义背景（上传、遮罩、刷新后还在、移除） ----
+        pg = new_page(b, 1440, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
+        CONTRAST = """() => { const rgb = (c) => { const m = c.match(/[\\d.]+/g).map(Number); return m; };
+          const lum = (c) => { const [r, g, b] = rgb(c).slice(0, 3).map((v) => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * r + .7152 * g + .0722 * b; };
+          const ratio = (a, b) => { const x = lum(a), y = lum(b); return +((Math.max(x, y) + .05) / (Math.min(x, y) + .05)).toFixed(2); };
+          const cs = getComputedStyle(document.documentElement);
+          const card = getComputedStyle(document.getElementById('poem')).backgroundColor;
+          const h = getComputedStyle(document.querySelector('.poem-body ruby.c .h')).color, rt = getComputedStyle(document.querySelector('.poem-body ruby.c rt')).color;
+          const probe = document.createElement('i'); probe.style.color = cs.getPropertyValue('--grid'); document.body.appendChild(probe); const grid = getComputedStyle(probe).color; probe.remove();
+          return { han: ratio(h, card), pinyin: ratio(rt, card), grid: ratio(grid, card), card }; }"""
+        th = {}
+        for k in ["xuan", "su", "zhu", "juan", "qinghua", "ye", "xin"]:
+            pg.click("#btnSettings"); settle(pg, 250); pg.click(f'[data-theme-k="{k}"]'); settle(pg, 500); pg.keyboard.press("Escape"); settle(pg, 1600)
+            th[k] = pg.evaluate(CONTRAST)
+            th[k]["attr"] = pg.evaluate("document.documentElement.dataset.theme || 'xuan'")
+            pg.screenshot(path=f"{OUT}/80-theme-{k}.png")
+            if k in ("ye", "qinghua"):
+                pg.click('#modeSeg [data-mode="g"]'); settle(pg, 1500); pg.screenshot(path=f"{OUT}/80-theme-{k}-tianzige.png")
+                with pg.expect_download() as dl: pg.click("#btnImage")
+                dl.value.save_as(f"{OUT}/81-export-{k}-tianzige.png"); settle(pg, 300)
+                pg.click('#modeSeg [data-mode="h"]'); settle(pg, 800)
+        results["v4_themes"] = th
+        pg.click("#btnSettings"); settle(pg, 300)
+        pg.screenshot(path=f"{OUT}/82-settings-themes.png")
+        # 自定义背景：生成一张 2400×1600 的图上传
+        import base64, struct, zlib as _z
+        def png(w, h):
+            raw = b"".join(b"\x00" + b"".join(bytes([60 + (x * 120 // w), 110 + (y * 80 // h), 150]) for x in range(w)) for y in range(h))
+            ck = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", _z.crc32(t + d) & 0xffffffff)
+            return b"\x89PNG\r\n\x1a\n" + ck(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + ck(b"IDAT", _z.compress(raw)) + ck(b"IEND", b"")
+        open("/tmp/yinshi-bg.png", "wb").write(png(1200, 800))
+        pg.set_input_files("#bgFile", "/tmp/yinshi-bg.png"); settle(pg, 1500)
+        results["v4_custom"] = pg.evaluate("[document.documentElement.dataset.theme, !!document.documentElement.style.getPropertyValue('--user-bg'), localStorage.getItem('yinshi:theme')]")
+        pg.fill("[data-bg-veil]", "0.8"); pg.dispatch_event("[data-bg-veil]", "input"); settle(pg, 300)
+        results["v4_custom_veil"] = pg.evaluate("document.documentElement.style.getPropertyValue('--veil-a')")
+        pg.keyboard.press("Escape"); settle(pg, 400)
+        pg.screenshot(path=f"{OUT}/83-theme-custom.png")
+        with pg.expect_download() as dl: pg.click("#btnImage")
+        dl.value.save_as(f"{OUT}/84-export-custom.png"); settle(pg, 300)
+        pg.reload(); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
+        results["v4_custom_after_reload"] = pg.evaluate("[document.documentElement.dataset.theme, !!document.documentElement.style.getPropertyValue('--user-bg')]")
+        pg.emulate_media(media="print"); settle(pg, 300)
+        results["v4_print_bg"] = pg.evaluate("[getComputedStyle(document.body).backgroundImage, getComputedStyle(document.querySelector('.poem-body ruby.c .h')).color]")
+        pg.screenshot(path=f"{OUT}/85-print-custom.png", full_page=True); pg.emulate_media(media="screen")
+        pg.click("#btnSettings"); settle(pg, 300); pg.click("[data-bg-remove]"); settle(pg, 800)
+        results["v4_custom_removed"] = pg.evaluate("[document.documentElement.dataset.theme || 'xuan', !!document.documentElement.style.getPropertyValue('--user-bg')]")
+        pg.context.close()
+        m = new_page(b, 390, 844, mobile=True)
+        m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1200)
+        m.click("#btnSettings"); settle(m, 400); m.click('[data-theme-k="ye"]'); settle(m, 600)
+        m.screenshot(path=f"{OUT}/86-mobile-settings-themes.png"); m.keyboard.press("Escape"); settle(m, 1200)
+        m.screenshot(path=f"{OUT}/87-mobile-theme-ye.png")
+        m.context.close()
 
     if PART in ("all", "visual"):
         # ---- 字体 · 长诗导出 · 竖排方向 · 字号 ----

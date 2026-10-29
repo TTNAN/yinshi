@@ -40,13 +40,36 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={"width": 1280, "height": 900}, locale="zh-CN")
     pg = ctx.new_page()
     def on_resp(r):
-        if "snowtraces" in r.url or "palemoky" in r.url:
+        if "snowtraces" in r.url or "palemoky" in r.url or "chinese-poetry" in r.url:
             api.append([r.status, r.url[:120], r.headers.get("access-control-allow-origin")])
     pg.on("response", on_resp)
-    pg.on("requestfailed", lambda r: ("snowtraces" in r.url or "palemoky" in r.url) and bad.append("failed " + r.url[:120] + " " + str(r.failure)))
+    pg.on("requestfailed", lambda r: ("snowtraces" in r.url or "palemoky" in r.url or "chinese-poetry" in r.url) and bad.append("failed " + r.url[:120] + " " + str(r.failure)))
     pg.on("console", lambda m: m.type == "error" and bad.append("console " + m.text[:160]))
     pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c", timeout=30000); pg.wait_for_timeout(800)
     R["first_load_api_calls"] = len(api)
+
+    # 全唐诗：李白的诗 ≥ 100 首、加载更多不重复；随机一首李白是唐诗；静夜思、春望能找到
+    pg.fill("#q", "李白"); pg.press("#q", "Enter"); wait_status(pg, 40000)
+    for _ in range(2):
+        n0 = pg.locator("#results .res").count()
+        pg.click("[data-more-author]"); pg.wait_for_function(f"() => document.querySelectorAll('#results .res').length > {n0}", timeout=40000); pg.wait_for_timeout(300)
+    keys = pg.eval_on_selector_all("#results .res-sec-au ~ li .res", "e => e.map(x => x.innerText.replace(/\\s+/g, ''))")
+    R["cp_libai"] = [len(keys), len(set(keys)), pg.locator("[data-more-author]").count(), pg.inner_text("#results .res-sec-au")]
+    shot(pg, "live-cp-libai.png")
+    pg.click("#results .res-sec-au ~ li .res >> nth=5"); pg.wait_for_timeout(1500)
+    R["cp_libai_open"] = pg.inner_text(".poem-meta") + " / " + pg.inner_text(".poem-title").replace("\n", "")[:40]
+    t0 = pg.inner_text(".poem-title")
+    pg.click("#poemView .meta-au"); pg.wait_for_timeout(300); pg.click("[data-author-rand]")
+    pg.wait_for_function("t => document.querySelector('.poem-title').innerText !== t", arg=t0, timeout=30000); pg.wait_for_timeout(600)
+    R["cp_libai_rand"] = pg.inner_text(".poem-meta") + " / " + pg.inner_text(".poem-title").replace("\n", "")[:40]
+    pg.fill("#q", "杜甫"); pg.press("#q", "Enter"); wait_status(pg, 40000)
+    R["cp_dufu"] = [pg.locator("#results .res-sec-au ~ li .res").count(), pg.inner_text("#results .res-sec-au")]
+    for q in ("静夜思", "春望", "将进酒"):
+        pg.fill("#q", q); pg.press("#q", "Enter"); wait_status(pg, 40000)
+        R["cp_title_" + q] = pg.eval_on_selector_all("#results .res", "e => e.slice(0, 2).map(x => x.innerText.split('\\n').slice(0, 2).join(' / '))")
+    pg.click("#results .res >> nth=0"); pg.wait_for_timeout(1500)
+    R["side_note_jjj"] = pg.inner_text("#sideNoteBody")[:30]
+    pg.keyboard.press("Escape")
 
     pg.fill("#q", "李白"); pg.press("#q", "Enter"); wait_status(pg)
     R["libai_sections"] = pg.eval_on_selector_all("#results .res-sec", "e => e.map(x => x.textContent)")
@@ -100,6 +123,17 @@ with sync_playwright() as p:
     pg.click("#results .res-sec-au ~ li .res >> nth=0"); pg.wait_for_timeout(1200)
     R["hant_opened"] = pg.inner_text(".poem-title").replace("\n", "") + " / " + pg.inner_text(".poem-meta")
     shot(pg, "live-hant.png")
+    # 手机
+    m = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True, locale="zh-CN").new_page()
+    m.on("console", lambda x: x.type == "error" and bad.append("m console " + x.text[:160]))
+    m.goto(BASE); m.wait_for_selector(".poem-body ruby.c", timeout=30000); m.wait_for_timeout(800)
+    m.click("#dSearch"); m.fill("#q2", "李白"); m.press("#q2", "Enter"); wait_status(m, 40000)
+    R["m_libai"] = m.locator("#results .res").count()
+    shot(m, "live-m-libai.png")
+    m.click("#results .res-sec-au ~ li .res >> nth=2"); m.wait_for_timeout(1500)
+    R["m_open"] = m.inner_text(".poem-meta")
+    R["m_side_collapsed"] = m.evaluate("getComputedStyle(document.getElementById('sideAuBody')).display")
+    shot(m, "live-m-poem.png")
     b.close()
 
 acao = [a for a in api if a[2] != "*"]
@@ -109,6 +143,8 @@ R["api_non200"] = [a for a in api if a[0] != 200]
 R["bad_acao"] = acao
 R["errors"] = bad
 print(json.dumps(R, ensure_ascii=False, indent=1))
-ok = not bad and not acao and R["sushi_more"][1] > R["sushi_more"][0] and "poetry-api.snowtraces.com" in R["api_hosts"]
+ok = (not bad and not acao and R["sushi_more"][1] > R["sushi_more"][0] and "poetry-api.snowtraces.com" in R["api_hosts"]
+      and R["cp_libai"][0] >= 100 and R["cp_libai"][0] == R["cp_libai"][1] and "唐" in R["cp_libai_rand"] and "李白" in R["cp_libai_rand"]
+      and any("李白" in x for x in R["cp_title_静夜思"]) and any("杜甫" in x for x in R["cp_title_春望"]) and R["cp_dufu"][0] >= 40)
 print("LIVE BROWSER:", "OK" if ok else "FAIL")
 sys.exit(0 if ok else 1)

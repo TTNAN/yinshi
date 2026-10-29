@@ -23,6 +23,11 @@ SOFTWARE.
 ---------------------------------------------------------------------------
 THIRD-PARTY
 
+chinese-poetry (Tang / Song poems; index under site/data/cp/ is derived from it,
+  poem texts are fetched at runtime from unpkg.com / raw.githubusercontent.com)
+  https://github.com/chinese-poetry/chinese-poetry
+  MIT License, Copyright (c) 2016 JackeyGao
+
 pinyin-pro
   site/vendor/pinyin-pro-3.29.5.min.js — unmodified npm build of pinyin-pro 3.29.5
   https://github.com/zh-lx/pinyin-pro

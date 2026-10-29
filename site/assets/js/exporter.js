@@ -66,13 +66,24 @@ function safeScale(W, H) {
   return Math.max(.5, Math.min(SCALE, 32000 / W, 32000 / H, Math.sqrt(2.5e8 / (W * H))));
 }
 
-export async function cardToPNG(liveCard) {
+/** bg：自定义背景图（可选），铺在纸下面，再按主题的纸色半透明盖住 */
+export async function cardToPNG(liveCard, bg = null) {
   if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
   const card = stageClone(liveCard);
-  try { return await paint(card); } finally { card.remove(); }
+  try { return await paint(card, bg); } finally { card.remove(); }
 }
 
-async function paint(card) {
+// 主题颜色从 CSS 变量取（宣纸 / 素笺 / 夜读……导出与屏幕一致）
+function themeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (k, d) => (cs.getPropertyValue(k).trim() || d);
+  let card = v("--card", "#fbf8f1");
+  if (/calc|var\(/.test(card)) card = `rgba(251,248,241,${(parseFloat(v("--veil-a", ".55")) || .55) * .5 + .45})`;   // 自定义背景：纸色半透明
+  return { card, grid: v("--grid", "#d79a90"), frame: v("--line-2", "#d4c7b0"), zhu: v("--zhu", "#b5352a"),
+    seal: v("--seal-ink", "#fbf1ea"), ink3: v("--ink-3", "#7a6f62"), dark: cs.colorScheme === "dark" || document.documentElement.dataset.theme === "ye" };
+}
+
+async function paint(card, bg) {
   const poem = card.querySelector(".poem");
   const vertical = poem.classList.contains("m-v");
   const grid = poem.classList.contains("m-g");
@@ -93,35 +104,41 @@ async function paint(card) {
   const X = (r) => r.left - box.left, Y = (r) => r.top - box.top;
 
   // 纸
-  ctx.fillStyle = "#fbf8f1"; ctx.fillRect(0, 0, W, H);
+  const TC = themeColors();
+  if (bg) {
+    const s = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
+    ctx.drawImage(bg, (W - bg.naturalWidth * s) / 2, (H - bg.naturalHeight * s) / 2, bg.naturalWidth * s, bg.naturalHeight * s);
+  } else { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); }
+  ctx.fillStyle = TC.card; ctx.fillRect(0, 0, W, H);
   const g = ctx.createRadialGradient(W / 2, 0, 10, W / 2, 0, Math.max(W, H) * .7);
-  g.addColorStop(0, "rgba(255,255,255,.7)"); g.addColorStop(1, "rgba(240,232,216,.5)");
+  g.addColorStop(0, TC.dark ? "rgba(255,240,210,.05)" : "rgba(255,255,255,.45)"); g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   // 细微纤维
-  ctx.save(); ctx.globalAlpha = .035; ctx.fillStyle = "#5a4630";
+  ctx.save(); ctx.globalAlpha = TC.dark ? .05 : .035; ctx.fillStyle = TC.dark ? "#e8dcc4" : "#5a4630";
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   for (let i = 0; i < W * H / 60; i++) ctx.fillRect(rnd() * W, rnd() * H, rnd() * 1.6, rnd() * 1.6);
   ctx.restore();
-  ctx.strokeStyle = "rgba(212,199,176,.7)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = TC.frame; ctx.lineWidth = 1;
   ctx.strokeRect(12.5, 12.5, W - 25, H - 25);
 
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
 
   // 田字格
   if (grid) {
-    const lineC = "#d79a90", soft = "rgba(215,154,144,.6)";
+    const lineC = TC.grid, soft = TC.grid;
     // 拼音四线三格：只画在汉字上，标点格没有（与页面一致）
     poem.querySelectorAll(".poem-body ruby.c rt").forEach((el) => {
       const r = el.getBoundingClientRect();
       const x = X(r), y = Y(r), w = r.width, hh = r.height;
       ctx.strokeStyle = lineC; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, hh - 1);
-      ctx.strokeStyle = soft;
+      ctx.strokeStyle = soft; ctx.globalAlpha = .6;
       [1 / 3, 2 / 3].forEach((f) => { ctx.beginPath(); ctx.moveTo(x, y + hh * f); ctx.lineTo(x + w, y + hh * f); ctx.stroke(); });
+      ctx.globalAlpha = 1;
     });
     poem.querySelectorAll(".poem-body .h").forEach((el) => {
       const r = el.getBoundingClientRect(); const x = X(r), y = Y(r);
       ctx.strokeStyle = lineC; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, r.width - 1, r.height - 1);
-      ctx.save(); ctx.strokeStyle = soft; ctx.setLineDash([4, 4]);
+      ctx.save(); ctx.strokeStyle = soft; ctx.globalAlpha = .6; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(x + r.width / 2, y); ctx.lineTo(x + r.width / 2, y + r.height);
       ctx.moveTo(x, y + r.height / 2); ctx.lineTo(x + r.width, y + r.height / 2); ctx.stroke(); ctx.restore();
     });
@@ -177,11 +194,11 @@ async function paint(card) {
   // 落款：小印 + 吟诗
   const sx = W - 40 - 26, sy = H - sigH - 6;
   ctx.save();
-  ctx.fillStyle = "#b5352a"; roundRect(ctx, sx, sy, 26, 26, 4); ctx.fill();
-  ctx.strokeStyle = "rgba(251,241,234,.8)"; ctx.lineWidth = 1; roundRect(ctx, sx + 2.5, sy + 2.5, 21, 21, 2.5); ctx.stroke();
+  ctx.fillStyle = TC.zhu; roundRect(ctx, sx, sy, 26, 26, 4); ctx.fill();
+  ctx.strokeStyle = TC.seal; ctx.lineWidth = 1; roundRect(ctx, sx + 2.5, sy + 2.5, 21, 21, 2.5); ctx.stroke();
   const han = getComputedStyle(poem).getPropertyValue("--han").trim() || "serif";
-  ctx.fillStyle = "#fbf1ea"; ctx.font = `16px ${han}`; ctx.fillText("吟", sx + 13, sy + 14);
-  ctx.textAlign = "right"; ctx.fillStyle = "#7a6f62"; ctx.font = `13px ${han}`;
+  ctx.fillStyle = TC.seal; ctx.font = `16px ${han}`; ctx.fillText("吟", sx + 13, sy + 14);
+  ctx.textAlign = "right"; ctx.fillStyle = TC.ink3; ctx.font = `13px ${han}`;
   ctx.fillText("吟诗 · 古诗拼音", sx - 10, sy + 14);
   ctx.restore();
 

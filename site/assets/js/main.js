@@ -6,6 +6,7 @@ import { renderPoem, fit } from "./render.js";
 import { cardToPNG, download, poemToText, copyText } from "./exporter.js";
 import * as fonts from "./fonts.js";
 import * as zh from "./zh.js";
+import * as themes from "./themes.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -84,6 +85,71 @@ function findTextbook(p) {
   return i < 0 ? null : dailyPoem(i);
 }
 
+/* ---------------- 作者生平 / 本诗赏析（静态数据，按需载入） ---------------- */
+let NOTES = null, POET_INFO = null, NOTES_BY_FIRST = new Map(), sideLoading = null;
+function loadSide() {
+  if (!sideLoading) {
+    sideLoading = Promise.all([
+      fetch("data/poets.json" + VQ).then((r) => r.json()),
+      fetch("data/notes.json" + VQ).then((r) => r.json()),
+    ]).then(([p, n]) => {
+      POET_INFO = p.poets || p; NOTES = n.notes || n;
+      // 诗名写法不同（如「鼓吹曲辞 将进酒」「水调歌头·明月几时有」）时按 作者 + 首句前五字 对上
+      NOTES_BY_FIRST = new Map(Object.entries(NOTES).filter(([, v]) => v.f).map(([k, v]) => [k.split("|")[1] + "|" + v.f, v]));
+    }).catch((e) => { sideLoading = null; throw e; });
+  }
+  return sideLoading;
+}
+const noteKey = (t, a) => String(t || "").replace(/\s+/g, "") + "|" + a;
+export function noteFor(p) {
+  if (!NOTES || !p) return null;
+  const s = view(p).simp;
+  return NOTES[noteKey(s.title, s.author)] || NOTES[noteKey(baseTitle(s.title), s.author)]
+    || NOTES_BY_FIRST.get(s.author + "|" + hanOnly(s.lines.join("")).slice(0, 5)) || null;
+}
+let sideSeq = 0;
+async function drawSide() {
+  const p = state.poem;
+  const au = $("sideAu"), no = $("sideNote");
+  if (!p) return;
+  const seq = ++sideSeq;
+  try { await loadSide(); } catch { au.hidden = no.hidden = true; return; }
+  if (seq !== sideSeq) return;
+  const s = view(p).simp;
+  const D = (x) => esc(toDisp(x || ""));
+  const poet = POET_INFO[s.author];
+  let auHTML = "";
+  if (poet) {
+    const meta = [poet.d, poet.y].filter(Boolean).join(" · ");
+    auHTML = `<p class="au-name">${D(s.author)}</p><p class="au-meta">${D(meta)}${poet.zi ? "<br>" + D(poet.zi) : ""}</p><p>${D(poet.bio)}</p>`
+      + (poet.works && poet.works.length ? `<h4>代表作</h4><div class="au-works">${poet.works.map((w) => `<button type="button" data-side-search="${esc(w)}">${D(w)}</button>`).join("")}</div>` : "");
+  } else if (s.author && !/佚名|无名氏|民歌|乐府/.test(s.author)) {
+    auHTML = `<p class="au-name">${D(s.author)}</p><p class="au-meta">${D(s.dynasty)}</p><p class="muted">暂无这位诗人的介绍</p>`;
+    api.authorInfo(s.author, s.dynasty).then((a) => {
+      if (seq !== sideSeq || !a || !(a.birth || a.death)) return;
+      const m = au.querySelector(".au-meta");
+      if (m) m.textContent = toDisp([a.dynasty || s.dynasty, `${a.birth || "？"}—${a.death || "？"}`].filter(Boolean).join(" · "));
+    });
+  } else if (s.author) {
+    auHTML = `<p class="au-name">${D(s.author)}</p><p class="au-meta">${D(s.dynasty)}</p>`;
+  }
+  $("sideAuBody").innerHTML = auHTML;
+  au.hidden = !auHTML;
+  const n = noteFor(p);
+  if (n) {
+    $("sideNoteBody").innerHTML = [n.yi && `<h4>诗意</h4><p>${D(n.yi)}</p>`, n.qing && `<h4>情感</h4><p>${D(n.qing)}</p>`, n.bei && `<h4>创作背景</h4><p>${D(n.bei)}</p>`].filter(Boolean).join("");
+    no.hidden = false; no.classList.remove("empty");
+  } else {
+    $("sideNoteBody").innerHTML = `<p class="muted">暂无赏析</p>`;
+    no.hidden = false; no.classList.add("empty");
+  }
+}
+function toggleSide(sec) {
+  const open = !sec.classList.contains("open");
+  sec.classList.toggle("open", open);
+  sec.querySelector(".side-toggle").setAttribute("aria-expanded", String(open));
+}
+
 /* ---------------- 简 / 繁 ---------------- */
 const hant = () => state.lang === "hant" && zh.ready();
 // 一首诗的两个版本：disp 是按当前简繁显示的文字，simp 是简体（用来注音、对课本、记自定义读音）
@@ -150,6 +216,7 @@ function draw(animate = false) {
   } else { note.hidden = true; note.innerHTML = ""; }
   document.title = `${disp.title} · ${disp.author ? disp.author + " · " : ""}吟诗`;
   syncControls();
+  drawSide();
 }
 
 function glyphs(ann, lines) {
@@ -233,6 +300,8 @@ function firstLineWith(p, q) {
 }
 
 const poemKey = (p) => { const s = view(p).simp; return baseTitle(s.title) + "|" + s.author; };
+// 列表去重用：同一位诗人常有多首同名诗（如「绝句」「杂诗」），再加首句前几个字区分
+const itemKey = (p) => { const s = view(p).simp; return s.author + "|" + hanOnly(s.lines.join("")).slice(0, 12); };
 function resItem(p, i, q, badge) {
   const d = view(p).disp;
   q = toDisp(q);
@@ -252,13 +321,13 @@ function renderResults() {
   if (au) {
     // 课本精选（小小一节）→ 「某某的诗」（可一直加载更多）→ 诗名与诗句
     const top = local.slice(0, 6);
-    const topKeys = new Set(top.map(poemKey));
+    const topKeys = new Set(local.map(poemKey));      // 课本里有的诗只出现一次，用课本文字
     if (top.length) { html.push(`<li class="res-sec">课本精选</li>`); top.forEach((p) => push(p, "课本")); }
     const name = toDisp(au.name);
     html.push(`<li class="res-sec res-sec-au">${esc(name)}的诗${au.total ? `<small>共 ${au.total} 首</small>` : ""}</li>`);
     au.list.filter((p) => !topKeys.has(poemKey(p))).forEach((p) => push(p, "", ""));
     if (au.hasMore) html.push(`<li class="res-more"><button class="btn text" type="button" data-more-author ${au.loading ? "disabled" : ""}>${au.loading ? "正在翻…" : `加载更多 ${esc(name)} 的诗（已显示 ${au.list.length}${au.total ? " / " + au.total : ""}）`}</button></li>`);
-    const rest = local.slice(6).filter((p) => !au.keys.has(poemKey(p)));
+    const rest = local.slice(6);
     if (rest.length || remote.length) html.push(`<li class="res-sec">诗名与诗句</li>`);
     rest.forEach((p) => push(p, "课本"));
     remote.forEach((p) => push(p, ""));
@@ -304,24 +373,24 @@ async function fullSearch(q, page = 1) {
   if (state.search.q !== q) return;   // 期间又搜了别的
   if (ar.status === "fulfilled" && ar.value && ar.value.list.length) {
     const v = ar.value;
-    state.search.author = { name: k, list: v.list, page: 1, hasMore: v.hasMore, total: v.total, keys: new Set(v.list.map(poemKey)) };
+    state.search.author = { name: k, list: v.list, page: 1, hasMore: v.hasMore, total: v.total, keys: new Set(v.list.map(itemKey)) };
   }
   const au = state.search.author;
   // 诗人那一节已经列了的，不在「诗名与诗句」里重复；作者就是这位诗人的也交给那一节
-  const skip = (p) => au && (au.keys.has(poemKey(p)) || sameName(p.author, k));
+  const skip = (p) => au && (au.keys.has(itemKey(p)) || sameName(p.author, k));
   const seen = new Set(state.search.local.map(poemKey));
   let hasMore = false;
   if (sr.status === "fulfilled") {
     const fresh = sr.value.list.filter((p) => !seen.has(poemKey(p)) && !skip(p));
-    const have = new Set(state.search.remote.map(poemKey));
-    state.search.remote = page === 1 ? fresh : state.search.remote.concat(fresh.filter((p) => !have.has(poemKey(p))));
+    const have = new Set(state.search.remote.map(itemKey));
+    state.search.remote = page === 1 ? fresh : state.search.remote.concat(fresh.filter((p) => !have.has(itemKey(p))));
     state.search.page = page;
     hasMore = sr.value.hasMore;
     state.search.total = sr.value.total;
   }
   renderResults();
   $("btnMore").hidden = !hasMore;
-  const n = new Set([...state.search.local, ...state.search.remote, ...(au ? au.list : [])].map(poemKey)).size;
+  const n = new Set([...state.search.local, ...state.search.remote, ...(au ? au.list : [])].map(itemKey)).size;
   if (sr.status === "fulfilled" || au) {
     const auLine = au ? `${esc(toDisp(au.name))}的诗${au.total ? ` ${au.total} 首` : ""}` : "";
     if (sr.status === "fulfilled" && sr.value.sampled) {
@@ -354,11 +423,11 @@ async function moreAuthor() {
   au.loading = true; renderResults();
   try {
     const r = await api.authorPoems(au.name, au.page + 1);
-    const fresh = r.list.filter((p) => !au.keys.has(poemKey(p)));
-    fresh.forEach((p) => au.keys.add(poemKey(p)));
+    const fresh = r.list.filter((p) => !au.keys.has(itemKey(p)));
+    fresh.forEach((p) => au.keys.add(itemKey(p)));
     au.list = au.list.concat(fresh);
-    au.page += 1; au.hasMore = r.hasMore;
-    state.search.remote = state.search.remote.filter((p) => !au.keys.has(poemKey(p)));
+    au.page += 1; au.hasMore = r.hasMore; if (r.total) au.total = r.total;
+    state.search.remote = state.search.remote.filter((p) => !au.keys.has(itemKey(p)));
   } catch (e) { toast(e.message || "加载失败"); }
   finally { au.loading = false; renderResults(); }
 }
@@ -534,6 +603,18 @@ function settingsPop(anchor) {
         </div>
         <small>诗文所用字体，导出图片和打印也用它；只下载选中的那一种</small>
       </div>
+      <div class="set-row">
+        <b>纸面</b>
+        <div class="theme-grid" role="radiogroup" aria-label="纸面主题">
+          ${Object.entries(themes.THEMES).map(([k, t]) => `<button type="button" role="radio" data-theme-k="${k}" aria-checked="${k === themes.current()}" aria-label="${esc(t.name)}">${esc(t.name)}</button>`).join("")}
+        </div>
+        <div class="theme-custom" id="themeCustom" ${themes.current() === "custom" ? "" : "hidden"}>
+          <span>遮罩</span><input type="range" min="0.1" max="0.9" step="0.05" value="${themes.veil()}" data-bg-veil aria-label="背景遮罩浓淡">
+          <button class="btn text" type="button" data-bg-pick>换图</button><button class="btn text" type="button" data-bg-remove>移除</button>
+        </div>
+        <input type="file" accept="image/*" id="bgFile" hidden>
+        <small>自定义背景的图片只存在这台设备的浏览器里，不会上传</small>
+      </div>
       ${Object.entries({ size: "字号", py: "拼音", lh: "行距" }).map(([k, label]) => `<div class="set-row">
         <b>${label}</b>
         <div class="seg seg-sm" role="radiogroup" aria-label="${label}">
@@ -611,6 +692,18 @@ function setVdir(d) {
   else toast(`竖排${label}`, 1200);
   draw(false);
   previewBehindSheet();
+}
+
+async function setTheme(k) {
+  const ok = await themes.choose(k);
+  if (!ok && k === "custom") { $("bgFile").click(); return; }
+  syncThemeButtons();
+  toast(`纸面：${themes.THEMES[k].name}`, 1200);
+}
+function syncThemeButtons() {
+  const cur = themes.current();
+  document.querySelectorAll("#pop [data-theme-k]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.themeK === cur)));
+  const c = document.getElementById("themeCustom"); if (c) c.hidden = cur !== "custom";
 }
 
 async function setLang(l) {
@@ -736,6 +829,11 @@ function bind() {
     const next = all[all.indexOf(c) + dirs[e.key]];
     if (next) { c.tabIndex = -1; next.tabIndex = 0; next.focus(); }
   });
+  ["sideAu", "sideNote"].forEach((id) => $(id).addEventListener("click", (e) => {
+    const w = e.target.closest("[data-side-search]");
+    if (w) { const q = toDisp(w.dataset.sideSearch); $("q").value = q; openSheet(q); fullSearch(q); return; }
+    if (e.target.closest(".side-toggle")) toggleSide($(id));
+  }));
   $("cardNote").addEventListener("click", (e) => {
     if (!e.target.closest("[data-alt]") || !state.alt) return;
     const { poem, from, toTextbook } = state.alt;
@@ -749,6 +847,9 @@ function bind() {
     if (e.target.closest("[data-reset]")) { setReading(pop.dataset.k, ""); return; }
     const fh = e.target.closest("[data-fh-ch]"); if (fh) { doFeihua(fh.dataset.fhCh); return; }
     const fo = e.target.closest("button[data-font]"); if (fo) { setFont(fo.dataset.font); return; }
+    const th = e.target.closest("[data-theme-k]"); if (th) { setTheme(th.dataset.themeK); return; }
+    if (e.target.closest("[data-bg-pick]")) { $("bgFile").click(); return; }
+    if (e.target.closest("[data-bg-remove]")) { themes.removeCustom().then(() => { syncThemeButtons(); toast("已移除自定义背景"); }); return; }
     const vd = e.target.closest("[data-vdir]"); if (vd) { setVdir(vd.dataset.vdir); return; }
     const lg = e.target.closest("[data-lang]"); if (lg) { setLang(lg.dataset.lang); return; }
     const am = e.target.closest("[data-author-more]"); if (am) { authorSearch(am.dataset.authorMore); return; }
@@ -758,7 +859,14 @@ function bind() {
     if (e.target.closest("[data-reset-display]")) { resetDisplay(); return; }
     if (e.target.closest("[data-clear-ov]")) { store.del(ovKey(state.poem)); closePop(); draw(false); toast("已清除本诗的自定义读音"); }
   });
-  $("pop").addEventListener("change", (e) => {
+  $("pop").addEventListener("input", (e) => { if (e.target.matches("[data-bg-veil]")) themes.setVeil(+e.target.value); });
+  $("pop").addEventListener("change", async (e) => {
+    if (e.target.id === "bgFile") {
+      const f = e.target.files && e.target.files[0]; e.target.value = "";
+      if (!f) return;
+      try { await themes.setCustom(f); syncThemeButtons(); toast("已换上自定义背景（只存在本机）"); } catch (err) { toast(err.message || "图片没能用上"); }
+      return;
+    }
     const k = e.target.dataset.set; if (!k) return;
     state.settings[k] = e.target.checked; store.set("settings", state.settings); draw(false);
   });
@@ -807,7 +915,7 @@ function bind() {
     try {
       const d = state.disp || state.poem;
       await fonts.ready(d.title + d.lines.join("") + (d.author || "") + (d.dynasty || ""));
-      const blob = await cardToPNG($("poem"));
+      const blob = await cardToPNG($("poem"), await themes.bgImage().catch(() => null));
       download(blob, `吟诗-${baseTitle((state.disp || state.poem).title) || "古诗"}.png`);
       toast("图片已导出");
     } catch (e) { console.warn(e); toast("导出失败，可以先用打印"); }
@@ -859,4 +967,5 @@ async function boot() {
   setPoem(dailyPoem(todayIndex()), { focus: false });
 }
 fonts.apply();
+themes.apply();
 boot();

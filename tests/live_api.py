@@ -49,5 +49,18 @@ s, b, h = get(P, "/poems/random", author="杜甫", lang="zh-Hans"); ck("palemoky
 s, b, h = get(P, "/search", q="静夜思", page=1, lang="zh-Hans"); cors("palemoky search", h); ck("fallback palemoky search 3ch", s == 200, (s, b.get("pagination")))
 s, b, h = get(P, "/poems/random", lang="zh-Hant"); ck("fallback palemoky zh-Hant", s == 200, (s, (b.get("data") or {}).get("title")))
 
+# 全唐诗 / 全宋诗（chinese-poetry）：浏览器直连的 CDN（unpkg 为主，raw.githubusercontent.com 备用）
+import urllib.request as _u
+CP = ["https://unpkg.com/chinese-poetry@2.0.1/dist/quantangshi/poet.tang.8000.json",
+      "https://raw.githubusercontent.com/chinese-poetry/chinese-poetry/b8594f81a89752241442f2ce267d6f66f96704ee/%E5%85%A8%E5%94%90%E8%AF%97/poet.tang.8000.json"]
+for u in CP:
+    try:
+        with _u.urlopen(_u.Request(u, headers={"User-Agent": "Mozilla/5.0 Chrome/124", "Origin": ORIGIN}), timeout=30) as r:
+            data = json.load(r); acao = r.headers.get_all("Access-Control-Allow-Origin") or []
+            ck("cp CDN " + u.split("/")[2], r.status == 200 and len(data) >= 997 and data[118]["title"] == "靜夜思" and data[118]["author"] == "李白", (r.status, len(data)))
+            cors("cp CDN " + u.split("/")[2], acao)
+    except Exception as e:
+        ck("cp CDN " + u.split("/")[2], False, e)
+
 for c in checks: print("OK  " if c[1] else "FAIL", c[0], "|", str(c[2])[:150])
 sys.exit(0 if all(c[1] for c in checks) else 1)

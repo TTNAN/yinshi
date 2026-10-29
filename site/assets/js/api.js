@@ -3,10 +3,12 @@
 //     搜索 /works?q=（标题、作者，至少 2 个字）、诗人 /authors?q= → /authors/:id/works、随机 /works/random
 // · 备用：诗泉 palemoky/chinese-poetry-api 公共实例 —— 主诗库连不上 / 5xx / 429 时用于随机与 3 字以上搜索；
 //     单字「月」这类查询主诗库不支持，改从备用随机抽几首含这个字的诗（飞花令式结果）
+// · 全唐诗 / 全宋诗：chinese-poetry 数据集（cp.js）—— 主诗库几乎没有唐诗、宋诗，「某某的诗」、随机某位诗人、诗名搜索都并入这里的作品；
 // · 页面加载不发请求；搜索、诗人目录、朝代结果缓存在内存 + localStorage；
 // · 主诗库按 IP 每分钟 60 次：客户端排队节流（每分钟最多 50 次、3 秒内最多 6 次），429 时按 Retry-After 冷却。
 import * as store from "./store.js";
 import * as zh from "./zh.js";
+import * as cp from "./cp.js";
 
 const RAW = window.YINSHI_CONFIG || {};
 const PRIMARY = Object.assign({
@@ -216,19 +218,92 @@ export async function random(params = {}) {
     const ts = (Array.isArray(params.type) ? params.type : params.type ? [params.type] : []).map((t) => TYPES[simp(t)]).filter(Boolean);
     if (ts.length) q.type = ts[Math.floor(Math.random() * ts.length)];
     if (params.author) {
-      const id = await authorId(params.author);
-      if (!id) return pmRandom(params);          // 主诗库没收这位诗人（例如多数唐诗作者）：改从备用诗库抽
+      const [id, fromCp] = await Promise.all([authorId(params.author).catch((e) => { if (canFallback(e)) return undefined; throw e; }), cpRandomPick(params)]);
+      if (fromCp && fromCp.pick) return fromCp.poem();
+      if (!id) {
+        if (fromCp) return fromCp.poem();          // 主诗库没收这位诗人：从全唐诗 / 全宋诗抽
+        return pmRandom(params);                   // 也不在全唐诗 / 全宋诗：改从备用诗库抽
+      }
       q.author_id = id;
     }
     const b = await primary("/works/random", q);
     return b && b.data && Array.isArray(b.data.content) ? normalize(b.data) : null;
   } catch (e) {
-    // 没有符合条件的诗：主诗库目前缺唐诗、宋诗，再到备用诗库找一次
+    // 没有符合条件的诗 / 主诗库忙：主诗库目前缺唐诗、宋诗，先从全唐诗 / 全宋诗抽，再到备用诗库找
+    if (e.status !== 404 && !canFallback(e)) throw e;
+    const c = await cpRandomAny(params).catch(() => null);
+    if (c) return c;
     if (e.status === 404) { try { return await pmRandom(params); } catch { return null; } }
-    if (!canFallback(e)) throw e;
     return pmRandom(params);
   }
 }
+
+/* ---------- 全唐诗 / 全宋诗（chinese-poetry） ---------- */
+const cpDyn = (d) => (!d ? "" : ["唐", "宋"].includes(simp(d)) ? simp(d) : null);   // null：这个朝代不在全唐诗 / 全宋诗里
+const cpTypeOk = (type) => { const ts = (Array.isArray(type) ? type : type ? [type] : []).map(simp); return !ts.length || ts.includes("诗"); };
+
+// 随机某位诗人：按两边的作品数决定从哪边抽（主诗库这位诗人的作品数只在列过一次之后才知道，之前按 50 首估）
+async function cpRandomPick(params) {
+  const dyn = cpDyn(params.dynasty);
+  if (dyn === null || !cpTypeOk(params.type)) return null;
+  const name = simp(params.author).trim();
+  let ids;
+  try { ids = await cp.authorIds(name, dyn); } catch { return null; }
+  if (!ids.length) return null;
+  const st = merged.get(name + "|" + (params.dynasty ? simp(params.dynasty) : ""));
+  const stN = st ? (st.stMore ? Math.max(50, st.stCount) : st.stCount) : 50;
+  return {
+    pick: Math.random() < ids.length / (ids.length + stN),
+    poem: async () => {
+      for (let tries = 0; tries < 3; tries++) {
+        const [p] = await cp.poems([ids[Math.floor(Math.random() * ids.length)]]);
+        if (p) return p;
+      }
+      return null;
+    },
+  };
+}
+
+async function cpRandomAny(params) {
+  if (params.author) { const c = await cpRandomPick(params); return c ? c.poem() : null; }
+  const dyn = cpDyn(params.dynasty);
+  if (!dyn || !cpTypeOk(params.type)) return null;          // 不限朝代时不替主诗库做主
+  const ix = await cp.load();
+  const S = ix.stride || 1024, n = dyn === "宋" ? ix.files.song : ix.files.tang, base = dyn === "宋" ? ix.songBase : 0;
+  for (let tries = 0; tries < 3; tries++) {
+    // 随机一块里的随机一首（每块至少 997 首；最后一块不足时抽到空号就再抽）
+    const [p] = await cp.poems([base + Math.floor(Math.random() * n) * S + Math.floor(Math.random() * 997)]);
+    if (p) return p;
+  }
+  return null;
+}
+
+// 诗名开头检索：先给唐诗三百首、唐诗；最多下载 3 块正文（唐诗三百首的诗自带全文）
+async function cpTitleSearch(q, limit = 12) {
+  try {
+    const ids = await cp.titleIds(simp(q), limit);
+    if (!ids.length) return [];
+    const take = [], blocks = new Set();
+    const featured = new Set((await cp.load()).featured);
+    for (const id of ids) {
+      if (take.length >= limit) break;
+      if (!featured.has(id)) {
+        const b = cp.block(id);
+        if (!blocks.has(b) && blocks.size >= 3) continue;
+        blocks.add(b);
+      }
+      take.push(id);
+    }
+    const list = await cp.poems(take);
+    // 同名时作品多的诗人（李白、杜甫……）排前面
+    const k = cp.normTitle(simp(q));
+    const rank = (p) => (cp.normTitle(p.title) === k ? 1e6 : 0) + (featured.has(p.cp) ? 5e5 : 0) + (p.dynasty === "唐" ? 1e5 : 0) + Math.min(cp.fame(p.author), 9e4);
+    return list.sort((a, b) => rank(b) - rank(a));
+  } catch { return []; }
+}
+
+// 去重：同一位诗人、正文开头相同就是同一首（诗名写法常不同，如「蜀道难」「相和歌辞 蜀道难」）
+const cpKey = (p) => simp(p.author) + "|" + Array.from(simp((p.lines || []).join(""))).filter((c) => /[\u3400-\u9fff]/.test(c)).slice(0, 12).join("");
 
 /** 搜索诗名、诗人（2 个字起）。单字改为随机抽几首含这个字的诗：返回 sampled: true */
 export async function search(q, page = 1) {
@@ -245,6 +320,14 @@ export async function search(q, page = 1) {
     }
     return { list: out, hasMore: false, total: null, sampled: true };
   }
+  const cpHits = page === 1 ? cpTitleSearch(s) : Promise.resolve([]);
+  const withCp = async (r) => {
+    const hits = await cpHits;
+    if (!hits.length) return r;
+    const seen = new Set(hits.map(cpKey)), seen2 = new Set(hits.map((p) => cp.normTitle(simp(p.title)) + "|" + simp(p.author)));
+    // 主诗库 / 备用里同一首（同名同作者）不再重复
+    return { ...r, list: hits.concat(r.list.filter((p) => !seen.has(cpKey(p)) && !seen2.has(cp.normTitle(simp(p.title)) + "|" + simp(p.author)))) };
+  };
   // 3 个字以上的第一页同时问备用诗库：主诗库目前缺唐诗、宋诗（如《将进酒》《望庐山瀑布》），备用诗库有
   const extra = page === 1 && len >= FALLBACK.minSearch ? pmSearch(q, 1).catch(() => null) : Promise.resolve(null);
   try {
@@ -257,20 +340,82 @@ export async function search(q, page = 1) {
       const hit = more.filter((p) => simp(p.title).includes(s));
       list = hit.concat(list, more.filter((p) => !hit.includes(p)));
     }
-    return { list, hasMore: r.hasMore, total: null };
+    return withCp({ list, hasMore: r.hasMore, total: null });
   } catch (e) {
-    if (!canFallback(e) || len < FALLBACK.minSearch) throw e;
+    if (!canFallback(e) || len < FALLBACK.minSearch) {
+      const hits = await cpHits;
+      if (hits.length && canFallback(e)) return { list: hits, hasMore: false, total: null };
+      throw e;
+    }
     const pm = await extra;                      // 第一页已经问过备用诗库
-    return pm || pmSearch(q, page);
+    return withCp(pm || await pmSearch(q, page));
   }
 }
 
-/** 某位诗人的诗（按 id 精确列出，游标分页）。dynasty 用来区分同名诗人 */
+/** 某位诗人的诗：主诗库（按 id 游标分页）+ 全唐诗 / 全宋诗（唐诗三百首在前，其余按卷序），去重后一页一页给。
+ *  dynasty 用来区分同名诗人。第 n 页总是同样的内容（已经算过的页缓存着）。 */
+const merged = new Map();
+const CP_PAGE = 50;
 export async function authorPoems(name, page = 1, _same = null, dynasty = "") {
-  const id = await authorId(name, dynasty);
-  if (!id) return { list: [], hasMore: false, total: null };
-  const r = await paged(`/authors/${encodeURIComponent(id)}/works`, { page_size: AUTHOR_PAGE_SIZE }, page);
-  return { list: r.data.map(normalize), hasMore: r.hasMore, total: null };
+  const n = simp(name).trim();
+  const key = n + "|" + (dynasty ? simp(dynasty) : "");
+  let st = merged.get(key);
+  if (!st) {
+    st = { pages: [], keys: new Set(), stPage: 0, stMore: true, stCount: 0, stId: undefined, cpIds: null, cpPos: 0, dups: 0 };
+    merged.set(key, st);
+  }
+  while (st.pages.length < page) {
+    if (st.pages.length && !morePages(st)) break;
+    await nextAuthorPage(st, n, dynasty);
+  }
+  const list = st.pages[page - 1] || [];
+  const total = st.stMore || !st.cpIds ? null : st.stCount + st.cpIds.length - st.dups;
+  return { list, hasMore: page < st.pages.length || morePages(st), total };
+}
+const morePages = (st) => st.stMore || (st.cpIds ? st.cpPos < st.cpIds.length : false);
+
+async function nextAuthorPage(st, n, dynasty) {
+  const dyn = cpDyn(dynasty);
+  const firstTime = st.cpIds === null;
+  const stTask = st.stMore ? (async () => {
+    if (st.stId === undefined) st.stId = await authorId(n, dynasty);
+    if (!st.stId) return { data: [], hasMore: false };
+    return paged(`/authors/${encodeURIComponent(st.stId)}/works`, { page_size: AUTHOR_PAGE_SIZE }, st.stPage + 1);
+  })() : Promise.resolve(null);
+  const cpTask = (async () => {
+    if (st.cpIds === null) st.cpIds = dyn === null ? [] : await cp.authorIds(n, dyn);
+    const ids = st.cpIds.slice(st.cpPos, st.cpPos + CP_PAGE);
+    return ids.length ? { ids, list: await cp.poems(ids) } : { ids, list: [] };
+  })();
+  const [sr, cr] = await Promise.allSettled([stTask, cpTask]);
+  const out = [];
+  const add = (p) => { const k = cpKey(p); if (st.keys.has(k)) { st.dups++; return; } st.keys.add(k); out.push(p); };
+  if (cr.status === "fulfilled") { cr.value.list.forEach(add); st.cpPos += cr.value.ids.length; }
+  else if (firstTime) st.cpIds = st.cpIds || [];
+  if (sr.status === "fulfilled" && sr.value) {
+    const data = sr.value.data.map(normalize);
+    st.stPage += 1; st.stCount += data.length; st.stMore = sr.value.hasMore;
+    data.forEach(add);
+  } else if (sr.status === "rejected") {
+    // 主诗库忙 / 连不上：只要全唐诗 / 全宋诗有，就先用这边的（主诗库这一页以后不再补）
+    if (!out.length && !(st.cpIds && st.cpPos < st.cpIds.length)) throw sr.reason;
+    st.stMore = false;
+  }
+  if (cr.status === "rejected" && sr.status === "rejected") throw sr.reason;
+  if (cr.status === "rejected" && !out.length && !st.stMore) throw new ApiError("network", "唐诗宋诗数据暂时取不到，稍后再试");
+  st.pages.push(out);
+}
+
+/** 诗人生卒年（主诗库 /authors，与按诗人搜索共用 30 天缓存）；查不到返回 null，不抛错 */
+export async function authorInfo(name, dynasty = "") {
+  const n = simp(name).trim();
+  if (!n || cooldownLeft() > 0) return null;
+  try {
+    const body = await primary("/authors", { q: n, page_size: 20 }, 30 * DAY);
+    const list = (body && Array.isArray(body.data) ? body.data : []).filter((a) => a.name === n);
+    const a = (dynasty && list.find((x) => x.dynasty === simp(dynasty))) || list[0];
+    return a ? { name: a.name, dynasty: a.dynasty || "", birth: a.birthYear || "", death: a.deathYear || "" } : null;
+  } catch { return null; }
 }
 
 /** 朝代 / 体裁 */
