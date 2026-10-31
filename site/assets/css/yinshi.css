@@ -26,7 +26,7 @@
   --zhu-soft: rgba(181, 53, 42, .09);
   --grid: #d79a90;         /* 田字格线 */
   --shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 30px 60px -30px rgba(70, 50, 25, .28), 0 8px 20px -12px rgba(70, 50, 25, .18);
-  /* 诗文字体：设置里可切换（宋 / 楷 / 黑 / 仿宋），默认宋体（思源宋体 Noto Serif SC） */
+  /* 诗文字体：设置里可切换，只作用于诗笺 .card（见下方 :root[data-font=…] .card）；页面其余部分固定用默认朱雀仿宋 */
   --han: "Zhuque Fangsong", "STFangsong", "FangSong", "FangSong_GB2312", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;   /* 默认：朱雀仿宋 */
   --py: "Yinshi Pinyin", "Noto Serif", "Georgia", "Times New Roman", serif;
   --ui: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
@@ -54,18 +54,18 @@
   --seal-ink: #fbf1ea;
 }
 
-:root[data-font="song"] { --han: "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="kai"] { --han: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
-:root[data-font="hei"] { --han: "Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+:root[data-font="song"] .card { --han: "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="kai"] .card { --han: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
+:root[data-font="hei"] .card { --han: "Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
 /* 以下几种字库只收常用简体字，缺字（多为繁体）时退回宋体 */
-:root[data-font="xiaowei"] { --han: "ZCOOL XiaoWei", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="mashan"] { --han: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="kuaile"] { --han: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif; }
-:root[data-font="longcang"] { --han: "Long Cang", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="xiaowei"] .card { --han: "ZCOOL XiaoWei", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="mashan"] .card { --han: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="kuaile"] .card { --han: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif; }
+:root[data-font="longcang"] .card { --han: "Long Cang", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
 
-/* ---------- 主题（设置 → 纸面）：只改颜色与纸纹，版式不变。纹理都是 CSS / 内联 SVG 自绘 ---------- */
+/* ---------- 主题（设置 → 纸面）：只作用于中间的诗笺 .card（页面其余部分始终是宣纸默认样子）。只改颜色与纸纹，版式不变。纹理都是 CSS / 内联 SVG 自绘 ---------- */
 /* 素笺：白纸 */
-:root[data-theme="su"] {
+:root[data-theme="su"] .card {
   --paper: #f4f4f1; --paper-2: #f8f8f6; --card: #ffffff; --page: #ecece8;
   --ink: #1a1a1a; --ink-2: #3f3f3f; --ink-3: #666660; --ink-4: #9a9a94;
   --line: #e5e5e0; --line-2: #d3d3cc; --grid: #dc9c92; --frame: rgba(200, 200, 192, .6);
@@ -75,7 +75,7 @@
   --shadow: 0 30px 60px -30px rgba(0,0,0,.18), 0 8px 20px -12px rgba(0,0,0,.12);
 }
 /* 竹简：青竹色，卡片带竹片纹 */
-:root[data-theme="zhu"] {
+:root[data-theme="zhu"] .card {
   --paper: #e6ecdc; --paper-2: #eef2e6; --card: #f2f5ea; --page: #dfe7d3;
   --ink: #1b2618; --ink-2: #33432e; --ink-3: #56654f; --ink-4: #8b9a83;
   --line: #d3dcc4; --line-2: #bccbaa; --zhu: #a5372a; --grid: #8eaa7b; --frame: rgba(150, 170, 130, .5);
@@ -85,7 +85,7 @@
   --shadow: 0 30px 60px -30px rgba(40,60,25,.28), 0 8px 20px -12px rgba(40,60,25,.18);
 }
 /* 绢本：米黄绢，细密经纬纹 */
-:root[data-theme="juan"] {
+:root[data-theme="juan"] .card {
   --paper: #e9dcbc; --paper-2: #f0e6cc; --card: #f4ead0; --page: #e2d3ae;
   --ink: #2a1f12; --ink-2: #4b3a24; --ink-3: #6b5636; --ink-4: #a08a66;
   --line: #e0cfa8; --line-2: #cdb78a; --zhu: #a6321f; --grid: #c99766; --frame: rgba(190, 160, 110, .55);
@@ -94,7 +94,7 @@
   --bar-1: rgba(233,220,188,.95); --bar-2: rgba(233,220,188,.85); --glass: rgba(244,234,208,.92); --glass-2: rgba(240,230,204,.97);
 }
 /* 青花瓷：白瓷底、青蓝墨 */
-:root[data-theme="qinghua"] {
+:root[data-theme="qinghua"] .card {
   --paper: #eef2f7; --paper-2: #f5f7fb; --card: #fbfcfe; --page: #e6ecf4;
   --ink: #102a55; --ink-2: #26457a; --ink-3: #4a6390; --ink-4: #8a9dbf;
   --line: #d6dfeb; --line-2: #b9c8de; --zhu: #2457a6; --zhu-2: #1b4688; --zhu-soft: rgba(36, 87, 166, .1); --grid: #8aa4cf; --frame: rgba(36, 87, 166, .35);
@@ -105,7 +105,7 @@
 }
 :root[data-theme="qinghua"] .card::before { border: 1px solid rgba(36,87,166,.35); box-shadow: 0 0 0 3px var(--card), 0 0 0 4px rgba(36,87,166,.18); }
 /* 夜读：墨色底、浅色字 */
-:root[data-theme="ye"] {
+:root[data-theme="ye"] .card {
   color-scheme: dark;
   --paper: #171511; --paper-2: #1d1a15; --card: #211e18; --page: #12100d;
   --ink: #ece4d3; --ink-2: #d0c6b2; --ink-3: #a99e8a; --ink-4: #7d7364;
@@ -117,21 +117,25 @@
   --shadow: 0 30px 60px -30px rgba(0,0,0,.6), 0 8px 20px -12px rgba(0,0,0,.5);
 }
 :root[data-theme="ye"] ruby.c.fix rt { color: #d6a46a; }
+:root[data-theme="ye"] .card ruby.c.blank.ok .h { color: #9cc888; }
+:root[data-theme="ye"] .card ruby.c.blank.ok::before { border-color: #7fae6a; }
+:root[data-theme="ye"] .card ruby.c .pz-r { color: #e0a35a; }
+:root[data-theme="ye"] .card ruby.c.hl::after { background: radial-gradient(circle, rgba(228,115,95,.22), transparent 70%); }
+:root[data-theme="ye"] .card ::selection { background: rgba(228,115,95,.35); color: #fff; }
+:root[data-theme="ye"] .card .poem.veil .line:hover, :root[data-theme="ye"] .card .card-gear:hover, :root[data-theme="ye"] .card .card-gear[aria-expanded="true"] { background: rgba(255,240,210,.07); }
 /* 信笺：竖向朱丝栏 */
-:root[data-theme="xin"] {
+:root[data-theme="xin"] .card {
   --paper: #f2ece0; --card: #fffdf6; --page: #ebe4d6;
   --grid: #d79a90; --frame: rgba(181, 53, 42, .35);
   --card-tex: repeating-linear-gradient(90deg, transparent 0 63px, rgba(181,53,42,.16) 63px 64px), radial-gradient(600px 300px at 50% 0%, rgba(255,255,255,.75), transparent 70%);
 }
 :root[data-theme="xin"] .card::before { border: 1.5px solid rgba(181, 53, 42, .35); }
-/* 自定义背景：图片只存在本机（IndexedDB），这里只铺开；遮罩浓淡由设置里的滑块控制 --veil-a */
-:root[data-theme="custom"] {
-  --paper-tex: linear-gradient(rgba(243,237,225,var(--veil-a,.55)), rgba(243,237,225,var(--veil-a,.55))), var(--user-bg, linear-gradient(#f3ede1, #efe8da));
-  --paper-size: cover; --paper-attach: fixed; --paper-pos: center;
-  --card: rgba(251, 248, 241, calc(var(--veil-a, .55) * .5 + .45));
-  --card-tex: none;
+/* 自定义背景：图片只存在本机（IndexedDB），只铺在诗笺上；上面盖一层纸色遮罩保证字看得清，浓淡由设置里的滑块控制 --veil-a */
+:root[data-theme="custom"] .card {
+  --card: #fbf8f1;
+  --card-tex: linear-gradient(rgba(251,248,241,var(--veil-a,.55)), rgba(251,248,241,var(--veil-a,.55))), var(--user-bg, linear-gradient(#fbf8f1, #f3ede1));
+  background-size: cover; background-position: center; background-repeat: no-repeat;
 }
-:root[data-theme="custom"] .card { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
 .theme-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .theme-grid button {
   position: relative; display: grid; align-content: end; justify-items: center; height: 58px; padding: 0 0 5px; border-radius: 10px; overflow: hidden;
@@ -294,6 +298,7 @@ kbd { font-family: var(--py); font-size: 12px; border: 1px solid var(--line-2); 
   background-image: var(--card-tex);
   border-radius: 6px;
   box-shadow: var(--shadow);
+  color: var(--ink);       /* 诗笺里的字用诗笺主题的墨色（夜读时为浅色） */
   outline: none;
 }
 .card::before { /* 细边框，像笺纸的栏线 */
@@ -748,8 +753,8 @@ ruby.c.say .h { color: var(--zhu); }
   body.print-big .poem.m-g { --cs: calc(34pt * var(--fs, 1)) !important; }
   ruby.c .pz { color: #555 !important; }
   ruby.c.say { background: none !important; box-shadow: none !important; }
-  /* 打印一律白纸黑字（夜读等主题也是） */
-  :root[data-theme] { --ink: #1f1b16; --ink-2: #4a4239; --ink-3: #7a6f62; --zhu: #b5352a; --grid: #d79a90; --card: #fff; color-scheme: light; }
+  /* 打印一律白纸黑字（夜读等诗笺主题也是） */
+  :root[data-theme] .card { --ink: #1f1b16; --ink-2: #4a4239; --ink-3: #7a6f62; --zhu: #b5352a; --grid: #d79a90; --card: #fff; color-scheme: light; }
   body { background-image: none !important; }
   .stage { max-width: none; padding: 0; }
   .card { box-shadow: none; background: #fff; padding: 8mm 0 0; max-width: none; min-height: 0; }

@@ -23,7 +23,7 @@ calls, errors, results = [], [], {}
 # 主诗库 poetry-api.snowtraces.com/v1（搜索至少 2 个字、/authors 名字→id、游标分页、随机直接 {data}）；
 # 备用 poetry.palemoky.com/api（随机 / 单字 / 3 字以上搜索）。MODE["api"] = "down" 时主诗库连不上，应自动改用备用
 MODE = {"api": "up"}
-# 分段运行：YINSHI_PART=base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）、v4、v5、v6（足迹地图、学习列表）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
+# 分段运行：YINSHI_PART=v7（纸面/字体只作用于诗笺）、base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）、v4、v5、v6（足迹地图、学习列表）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
 PART = os.environ.get("YINSHI_PART", "all")
 
 def mock(route):
@@ -458,7 +458,7 @@ with sync_playwright() as p:
           const cs = getComputedStyle(document.documentElement);
           const card = getComputedStyle(document.getElementById('poem')).backgroundColor;
           const h = getComputedStyle(document.querySelector('.poem-body ruby.c .h')).color, rt = getComputedStyle(document.querySelector('.poem-body ruby.c rt')).color;
-          const probe = document.createElement('i'); probe.style.color = cs.getPropertyValue('--grid'); document.body.appendChild(probe); const grid = getComputedStyle(probe).color; probe.remove();
+          const probe = document.createElement('i'); probe.style.color = getComputedStyle(document.getElementById('poem')).getPropertyValue('--grid'); document.body.appendChild(probe); const grid = getComputedStyle(probe).color; probe.remove();
           return { han: ratio(h, card), pinyin: ratio(rt, card), grid: ratio(grid, card), card }; }"""
         th = {}
         for k in ["xuan", "su", "zhu", "juan", "qinghua", "ye", "xin"]:
@@ -783,7 +783,8 @@ with sync_playwright() as p:
         pg.goto(BASE + "#map=" + "%E8%BE%9B%E5%BC%83%E7%96%BE"); pg.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(pg, 1500)
         chips = pg.inner_text("#mapv .mv-chips")
         chk("map_hant", "蘇軾" in chips and "辛棄疾" in chips, chips.replace("\n", " "))
-        chk("map_dark_bg", pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor"), pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor"))
+        mbg = pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor")
+        chk("map_stays_xuan_under_ye", mbg == "rgb(243, 237, 225)", mbg)   # 纸面只作用于诗笺，地图页保持宣纸
         pg.click('#mvList [data-mv-place="jingkou"]'); settle(pg, 400)
         pg.screenshot(path=f"{OUT}/124-map-xin-ye-hant.png")
         pg.context.close()
@@ -912,6 +913,81 @@ with sync_playwright() as p:
         m.screenshot(path=f"{OUT}/139-imported-list-mobile.png")
         m.context.close()
         results["v6"] = V6
+
+    if PART in ("all", "v7"):
+        # ---- 纸面与字体只作用于中间的诗笺，页面外框（顶栏、搜索、侧栏、背景）不变 ----
+        V7 = {}
+        def chk7(name, ok, val=""):
+            V7[name] = ("ok" if ok else "FAIL") + (f" {val}" if val != "" else "")
+        PROBE = """() => { const g = (sel, p) => { const e = document.querySelector(sel); return e ? getComputedStyle(e)[p] : null; };
+          return { cardBg: g('#poem', 'backgroundColor'), cardImg: g('#poem', 'backgroundImage').slice(0, 60), cardHan: g('.poem-body ruby.c .h', 'fontFamily').split(',')[0],
+                   cardInk: g('.poem-body ruby.c .h', 'color'), bodyBg: g('body', 'backgroundColor'), bodyImg: g('body', 'backgroundImage').slice(0, 60), htmlBg: g('html', 'backgroundColor'),
+                   barBg: g('.topbar', 'backgroundImage'), brandFont: g('.brand-name', 'fontFamily').split(',')[0], searchFont: g('#q', 'fontFamily').split(',')[0],
+                   searchBg: g('.search', 'backgroundColor'), bodyColor: g('body', 'color'), meta: document.querySelector('meta[name=theme-color]').content }; }"""
+        def setting7(page, sel):
+            page.click("#btnSettings"); settle(page, 250); page.click(sel); settle(page, 1500); page.keyboard.press("Escape"); settle(page, 600)
+        V7OUT = os.environ.get("YINSHI_V7_OUT", OUT); os.makedirs(V7OUT, exist_ok=True)
+        pg = new_page(b, 1440, 1000)
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 2200)
+        d0 = pg.evaluate(PROBE)
+        pg.screenshot(path=f"{V7OUT}/01-desktop-default.png")
+        setting7(pg, '[data-theme-k="zhu"]'); setting7(pg, '[data-font="kai"]')
+        d1 = pg.evaluate(PROBE)
+        pg.screenshot(path=f"{V7OUT}/02-desktop-zhu-kai.png")
+        chk7("zhu_card_bg_changed", d1["cardBg"] != d0["cardBg"], f'{d0["cardBg"]} -> {d1["cardBg"]}')
+        chk7("kai_card_font_changed", d1["cardHan"] != d0["cardHan"] and "WenKai" in d1["cardHan"], f'{d0["cardHan"]} -> {d1["cardHan"]}')
+        for k in ("bodyBg", "bodyImg", "htmlBg", "barBg", "brandFont", "searchFont", "searchBg", "bodyColor", "meta"):
+            chk7("zhu_kai_same_" + k, d1[k] == d0[k], d1[k] if d1[k] != d0[k] else "")
+        # 侧栏、搜索结果也不变
+        pg.fill("#q", "春"); settle(pg, 900)
+        chk7("results_font_default", "Zhuque" in pg.evaluate("getComputedStyle(document.querySelector('#results .res-t')).fontFamily.split(',')[0]"))
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        setting7(pg, '[data-theme-k="ye"]')
+        d2 = pg.evaluate(PROBE)
+        pg.screenshot(path=f"{V7OUT}/03-desktop-ye-kai.png")
+        chk7("ye_card_dark", d2["cardBg"] == "rgb(33, 30, 24)", d2["cardBg"])
+        chk7("ye_card_ink_light", d2["cardInk"] == "rgb(236, 228, 211)", d2["cardInk"])
+        for k in ("bodyBg", "bodyImg", "htmlBg", "barBg", "searchFont", "searchBg", "bodyColor", "meta"):
+            chk7("ye_same_" + k, d2[k] == d0[k], d2[k] if d2[k] != d0[k] else "")
+        # 夜读诗笺里：田字格、遮字、平仄、改读音标记都看得清（对比度）
+        pg.click('#modeSeg [data-mode="g"]'); settle(pg, 1500); pg.screenshot(path=f"{V7OUT}/04-desktop-ye-tianzige.png")
+        pg.click('#modeSeg [data-mode="v"]'); settle(pg, 1500); pg.screenshot(path=f"{V7OUT}/05-desktop-ye-vertical.png")
+        pg.click('#modeSeg [data-mode="h"]'); settle(pg, 1200)
+        pg.click("#togVeil"); settle(pg, 800); pg.screenshot(path=f"{V7OUT}/06-desktop-ye-veil.png"); pg.click("#togVeil"); settle(pg, 600)
+        with pg.expect_download() as dl: pg.click("#btnImage")
+        dl.value.save_as(f"{V7OUT}/07-export-ye-kai.png"); settle(pg, 300)
+        pg.emulate_media(media="print"); settle(pg, 300)
+        pc = pg.evaluate("[getComputedStyle(document.querySelector('.poem-body ruby.c .h')).color, getComputedStyle(document.getElementById('poem')).backgroundColor]")
+        chk7("print_ye_black_on_white", pc == ["rgb(31, 27, 22)", "rgb(255, 255, 255)"], pc)
+        pg.emulate_media(media="screen")
+        # 自定义背景：铺在诗笺上，不铺满页面
+        import struct as _st, zlib as _zz
+        def png7(w, h):
+            raw = b"".join(b"\x00" + b"".join(bytes([40 + (x * 160 // w), 90 + (y * 100 // h), 170 - (x * 60 // w)]) for x in range(w)) for y in range(h))
+            ck = lambda t, d: _st.pack(">I", len(d)) + t + d + _st.pack(">I", _zz.crc32(t + d) & 0xffffffff)
+            return b"\x89PNG\r\n\x1a\n" + ck(b"IHDR", _st.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + ck(b"IDAT", _zz.compress(raw)) + ck(b"IEND", b"")
+        open("/tmp/yinshi-bg7.png", "wb").write(png7(900, 600))
+        pg.click("#btnSettings"); settle(pg, 300); pg.set_input_files("#bgFile", "/tmp/yinshi-bg7.png"); settle(pg, 1500); pg.keyboard.press("Escape"); settle(pg, 600)
+        d3 = pg.evaluate(PROBE)
+        chk7("custom_on_card", "blob:" in pg.evaluate("getComputedStyle(document.getElementById('poem')).backgroundImage"))
+        chk7("custom_not_on_body", d3["bodyImg"] == d0["bodyImg"], d3["bodyImg"])
+        pg.screenshot(path=f"{V7OUT}/08-desktop-custom.png")
+        with pg.expect_download() as dl: pg.click("#btnImage")
+        dl.value.save_as(f"{V7OUT}/09-export-custom.png"); settle(pg, 300)
+        pg.context.close()
+        # 手机：竹简+楷、夜读；首屏前就套上（不闪）
+        for name, th, fo in (("10-mobile-default", None, None), ("11-mobile-zhu-kai", "zhu", "kai"), ("12-mobile-ye", "ye", None)):
+            m = new_page(b, 390, 844, mobile=True)
+            init = ""
+            if th: init += f"localStorage.setItem('yinshi:theme', JSON.stringify('{th}'));"
+            if fo: init += f"localStorage.setItem('yinshi:font', JSON.stringify('{fo}'));"
+            if init: m.add_init_script(init)
+            m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1800)
+            dm = m.evaluate(PROBE)
+            if th: chk7(name + "_page_same", dm["bodyBg"] == "rgb(243, 237, 225)" and dm["searchFont"] == d0["searchFont"], dm["bodyBg"])
+            m.screenshot(path=f"{V7OUT}/{name}.png")
+            m.context.close()
+        results["v7"] = V7
     b.close()
 
 results["api_calls"] = calls
@@ -919,3 +995,5 @@ results["errors"] = errors
 print(json.dumps(results, ensure_ascii=False, indent=1))
 bad6 = [k for k, v in results.get("v6", {}).items() if v.startswith("FAIL")]
 if bad6: print("V6 FAIL:", bad6); sys.exit(1)
+bad7 = [k for k, v in results.get("v7", {}).items() if v.startswith("FAIL")]
+if bad7: print("V7 FAIL:", bad7); sys.exit(1)

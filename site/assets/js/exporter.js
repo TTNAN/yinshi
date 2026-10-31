@@ -73,14 +73,15 @@ export async function cardToPNG(liveCard, bg = null, extras = []) {
   try { return await paint(card, bg, extras); } finally { card.remove(); }
 }
 
-// 主题颜色从 CSS 变量取（宣纸 / 素笺 / 夜读……导出与屏幕一致）
-function themeColors() {
-  const cs = getComputedStyle(document.documentElement);
+// 主题颜色从诗笺元素的 CSS 变量取（纸面只作用于诗笺；宣纸 / 素笺 / 夜读……导出与屏幕一致）
+function themeColors(cardEl, bg) {
+  const cs = getComputedStyle(cardEl);
   const v = (k, d) => (cs.getPropertyValue(k).trim() || d);
   let card = v("--card", "#fbf8f1");
-  if (/calc|var\(/.test(card)) card = `rgba(251,248,241,${(parseFloat(v("--veil-a", ".55")) || .55) * .5 + .45})`;   // 自定义背景：纸色半透明
+  if (bg || /calc|var\(/.test(card)) card = `rgba(251,248,241,${parseFloat(v("--veil-a", ".55")) || .55})`;   // 自定义背景：与屏幕上一样盖一层纸色遮罩
   return { card, grid: v("--grid", "#d79a90"), frame: v("--line-2", "#d4c7b0"), zhu: v("--zhu", "#b5352a"),
-    seal: v("--seal-ink", "#fbf1ea"), ink3: v("--ink-3", "#7a6f62"), dark: cs.colorScheme === "dark" || document.documentElement.dataset.theme === "ye" };
+    seal: v("--seal-ink", "#fbf1ea"), ink3: v("--ink-3", "#7a6f62"), ink2: v("--ink-2", "#4a4239"),
+    dark: cs.colorScheme === "dark" || document.documentElement.dataset.theme === "ye" };
 }
 
 // 把一段文字按宽度折行（逐字，标点不放行首）
@@ -126,7 +127,7 @@ async function paint(card, bg, extras = []) {
   const X = (r) => r.left - box.left, Y = (r) => r.top - box.top;
 
   // 纸
-  const TC = themeColors();
+  const TC = themeColors(card, bg);
   if (bg) {
     const s = Math.max(W / bg.naturalWidth, H / bg.naturalHeight);
     ctx.drawImage(bg, (W - bg.naturalWidth * s) / 2, (H - bg.naturalHeight * s) / 2, bg.naturalWidth * s, bg.naturalHeight * s);
@@ -219,7 +220,7 @@ async function paint(card, bg, extras = []) {
     ctx.save(); ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.strokeStyle = TC.frame; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + exW, y); ctx.stroke();
     y += 14;
-    const ink = getComputedStyle(document.documentElement).getPropertyValue("--ink-2").trim() || "#4a4239";
+    const ink = TC.ink2;
     for (const b of exBlocks) {
       ctx.fillStyle = TC.ink3; ctx.font = `12px ${getComputedStyle(document.body).fontFamily}`; ctx.fillText(b.h, x0, y); y += 24;
       ctx.fillStyle = ink; ctx.font = exFont;
