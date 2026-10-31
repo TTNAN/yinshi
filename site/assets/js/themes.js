@@ -1,6 +1,6 @@
 // 纸面主题：宣纸（默认）/ 素笺 / 竹简 / 绢本 / 青花 / 夜读 / 信笺 / 自定义背景。
-// 纸面只作用于中间的诗笺（.card），页面其余部分始终是宣纸默认样子。
-// 颜色与纹理都在 yinshi.css 的 :root[data-theme=…] .card 里；这里只负责切换、记住选择，以及「自定义背景」：
+// 纸面只作用于中间的诗笺（.card），页面其余部分始终是宣纸默认样子；唯一例外是「夜读」，整页一起变暗。
+// 颜色与纹理都在 yinshi.css 的 :root[data-theme=…] .card（夜读是 :root[data-theme="ye"]）里；这里只负责切换、记住选择，以及「自定义背景」：
 // 用户选的图片在本机缩到最长边 ≤ 1600px 的 JPEG，存进浏览器的 IndexedDB，从不上传到任何地方。
 import * as store from "./store.js";
 
@@ -66,7 +66,7 @@ export async function apply(k = current()) {
   if (k === DEFAULT) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", k);
   root.style.setProperty("--veil-a", String(veil()));
   const m = document.querySelector('meta[name="theme-color"]');
-  if (m) m.content = THEMES[DEFAULT].meta;   // 页面外框不随纸面变，浏览器地址栏颜色也保持宣纸色
+  if (m) m.content = THEMES[k === "ye" ? "ye" : DEFAULT].meta;   // 页面外框不随纸面变（地址栏保持宣纸色）；夜读整页变暗，地址栏也变深
   if (k === "custom" || bgUrl) setBgVars(await loadBg().catch(() => null));
 }
 

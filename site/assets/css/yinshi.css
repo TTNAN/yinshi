@@ -63,7 +63,7 @@
 :root[data-font="kuaile"] .card { --han: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif; }
 :root[data-font="longcang"] .card { --han: "Long Cang", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
 
-/* ---------- 主题（设置 → 纸面）：只作用于中间的诗笺 .card（页面其余部分始终是宣纸默认样子）。只改颜色与纸纹，版式不变。纹理都是 CSS / 内联 SVG 自绘 ---------- */
+/* ---------- 主题（设置 → 纸面）：只作用于中间的诗笺 .card（页面其余部分始终是宣纸默认样子；夜读例外，整页变暗）。只改颜色与纸纹，版式不变。纹理都是 CSS / 内联 SVG 自绘 ---------- */
 /* 素笺：白纸 */
 :root[data-theme="su"] .card {
   --paper: #f4f4f1; --paper-2: #f8f8f6; --card: #ffffff; --page: #ecece8;
@@ -104,8 +104,8 @@
   --shadow: 0 30px 60px -30px rgba(16,42,85,.25), 0 8px 20px -12px rgba(16,42,85,.15);
 }
 :root[data-theme="qinghua"] .card::before { border: 1px solid rgba(36,87,166,.35); box-shadow: 0 0 0 3px var(--card), 0 0 0 4px rgba(36,87,166,.18); }
-/* 夜读：墨色底、浅色字 */
-:root[data-theme="ye"] .card {
+/* 夜读：墨色底、浅色字。唯一的例外：选夜读时整页（背景、顶栏、搜索、侧栏、弹出层、地图、列表、练习、底栏）一起变暗，诗笺也是深色；字体仍只作用于诗笺 */
+:root[data-theme="ye"] {
   color-scheme: dark;
   --paper: #171511; --paper-2: #1d1a15; --card: #211e18; --page: #12100d;
   --ink: #ece4d3; --ink-2: #d0c6b2; --ink-3: #a99e8a; --ink-4: #7d7364;
@@ -121,7 +121,7 @@
 :root[data-theme="ye"] .card ruby.c.blank.ok::before { border-color: #7fae6a; }
 :root[data-theme="ye"] .card ruby.c .pz-r { color: #e0a35a; }
 :root[data-theme="ye"] .card ruby.c.hl::after { background: radial-gradient(circle, rgba(228,115,95,.22), transparent 70%); }
-:root[data-theme="ye"] .card ::selection { background: rgba(228,115,95,.35); color: #fff; }
+:root[data-theme="ye"] ::selection { background: rgba(228,115,95,.35); color: #fff; }
 :root[data-theme="ye"] .card .poem.veil .line:hover, :root[data-theme="ye"] .card .card-gear:hover, :root[data-theme="ye"] .card .card-gear[aria-expanded="true"] { background: rgba(255,240,210,.07); }
 /* 信笺：竖向朱丝栏 */
 :root[data-theme="xin"] .card {
@@ -150,7 +150,7 @@
 .theme-grid [data-theme-k="juan"] { --th-bg: #f0e4c6; --th-card: #e9dcbc; --th-ink: #2a1f12; }
 .theme-grid [data-theme-k="qinghua"] { --th-bg: #fbfcfe; --th-card: #dfe7f3; --th-ink: #102a55; }
 .theme-grid [data-theme-k="ye"] { --th-bg: #211e18; --th-card: #171511; --th-ink: #ece4d3; }
-.theme-grid [data-theme-k="xin"] { --th-bg: repeating-linear-gradient(90deg, #fffdf6 0 11px, rgba(181,53,42,.3) 11px 12px); --th-card: #fffdf6; --th-ink: #1f1b16; }
+.theme-grid [data-theme-k="xin"] { --th-bg: repeating-linear-gradient(90deg, #fffdf6 0 11px, #ecc4bd 11px 12px); --th-card: #fffdf6; --th-ink: #1f1b16; }
 .theme-grid [data-theme-k="custom"] { --th-bg: var(--user-thumb, repeating-linear-gradient(45deg, #efe8da 0 6px, #e4dccb 6px 12px)); --th-card: rgba(255,255,255,.5); --th-ink: #1f1b16; background-size: cover; background-position: center; }
 .theme-custom { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); }
 .theme-custom input[type=range] { flex: 1 1 120px; accent-color: var(--zhu); }
@@ -558,6 +558,7 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 }
 .font-grid button:hover { border-color: var(--line-2); color: var(--ink); }
 .font-grid button[aria-checked="true"] { background: var(--card); color: var(--ink); border-color: rgba(181, 53, 42, .55); box-shadow: 0 0 0 1px rgba(181, 53, 42, .35), 0 1px 3px rgba(60, 45, 25, .12); }
+.font-grid button[aria-checked="true"] { border-color: color-mix(in srgb, var(--zhu) 60%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--zhu) 40%, transparent), 0 1px 3px rgba(60, 45, 25, .12); }
 .font-grid .fn { font-size: 21px; line-height: 1.15; letter-spacing: .04em; }
 .font-grid .fs { font-family: var(--ui); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0; white-space: nowrap; }
 .font-grid [data-font="fang"] .fn { font-family: "Zhuque Fangsong", "STFangsong", "FangSong", serif; }
@@ -578,6 +579,12 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
   padding: 10px 18px; border-radius: 999px; opacity: 0; pointer-events: none; transition: all .3s var(--ease);
   max-width: calc(100vw - 32px); text-align: center;
 }
+/* 夜读下的「实心 / 选中」控件：不用整块浅色（深底上刺眼），主按钮用朱砂、选中项用淡淡的暖色底加描边 */
+:root[data-theme="ye"] .btn.solid { background: var(--zhu); color: #1d1a15; }
+:root[data-theme="ye"] .btn.solid:hover { background: var(--zhu-2); }
+:root[data-theme="ye"] .chip[aria-pressed="true"], :root[data-theme="ye"] .opt[aria-pressed="true"], :root[data-theme="ye"] .pb-steps li.on {
+  background: rgba(236, 228, 211, .14); border-color: var(--ink-3); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(236, 228, 211, .18); }
+:root[data-theme="ye"] .toast { background: rgba(236, 228, 211, .94); color: #1d1a15; box-shadow: 0 8px 24px -10px rgba(0,0,0,.6); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 
@@ -754,7 +761,7 @@ ruby.c.say .h { color: var(--zhu); }
   ruby.c .pz { color: #555 !important; }
   ruby.c.say { background: none !important; box-shadow: none !important; }
   /* 打印一律白纸黑字（夜读等诗笺主题也是） */
-  :root[data-theme] .card { --ink: #1f1b16; --ink-2: #4a4239; --ink-3: #7a6f62; --zhu: #b5352a; --grid: #d79a90; --card: #fff; color-scheme: light; }
+  :root[data-theme="ye"], :root[data-theme] .card { --ink: #1f1b16; --ink-2: #4a4239; --ink-3: #7a6f62; --zhu: #b5352a; --grid: #d79a90; --card: #fff; color-scheme: light; }
   body { background-image: none !important; }
   .stage { max-width: none; padding: 0; }
   .card { box-shadow: none; background: #fff; padding: 8mm 0 0; max-width: none; min-height: 0; }

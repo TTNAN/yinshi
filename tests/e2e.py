@@ -784,7 +784,7 @@ with sync_playwright() as p:
         chips = pg.inner_text("#mapv .mv-chips")
         chk("map_hant", "蘇軾" in chips and "辛棄疾" in chips, chips.replace("\n", " "))
         mbg = pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor")
-        chk("map_stays_xuan_under_ye", mbg == "rgb(243, 237, 225)", mbg)   # 纸面只作用于诗笺，地图页保持宣纸
+        chk("map_dark_under_ye", mbg == "rgb(23, 21, 17)", mbg)   # 夜读是唯一例外：整页变暗，地图页也是深色
         pg.click('#mvList [data-mv-place="jingkou"]'); settle(pg, 400)
         pg.screenshot(path=f"{OUT}/124-map-xin-ye-hant.png")
         pg.context.close()
@@ -927,6 +927,24 @@ with sync_playwright() as p:
         def setting7(page, sel):
             page.click("#btnSettings"); settle(page, 250); page.click(sel); settle(page, 1500); page.keyboard.press("Escape"); settle(page, 600)
         V7OUT = os.environ.get("YINSHI_V7_OUT", OUT); os.makedirs(V7OUT, exist_ok=True)
+        YE2 = os.environ.get("YINSHI_YE2_OUT", V7OUT); os.makedirs(YE2, exist_ok=True)
+        # 夜读下找「诗笺外还亮着的」界面：可见元素背景色明亮且不透明，或文字是深色（深底上看不清）
+        LIGHT_SCAN = """() => { const lum = (c) => { const m = (c.match(/[\\d.]+/g) || []).map(Number); if (m.length < 3) return null;
+            const [r, g, b] = m.slice(0, 3).map((v) => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
+            return { l: .2126 * r + .7152 * g + .0722 * b, a: m.length > 3 ? m[3] : 1 }; };
+          const skip = (e) => e.closest('.card, .theme-grid, .font-grid, .toast, .seal-img, svg, [hidden]');
+          const out = [];
+          for (const e of document.querySelectorAll('body *')) {
+            if (skip(e)) continue;
+            const r = e.getBoundingClientRect(); if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
+            const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
+            const bg = lum(cs.backgroundColor);
+            if (bg && bg.a > .5 && bg.l > .4) out.push('bg ' + e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + '.' + [...e.classList].join('.') + ' ' + cs.backgroundColor);
+            const txt = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+            const fg = lum(cs.color);
+            if (txt && fg && fg.l < .08 && !(bg && bg.a > .5 && (bg.l + .05) / (fg.l + .05) >= 3)) out.push('ink ' + e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + '.' + [...e.classList].join('.') + ' ' + cs.color);
+          }
+          return out.slice(0, 12); }"""
         pg = new_page(b, 1440, 1000)
         pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 2200)
         d0 = pg.evaluate(PROBE)
@@ -947,15 +965,48 @@ with sync_playwright() as p:
         pg.screenshot(path=f"{V7OUT}/03-desktop-ye-kai.png")
         chk7("ye_card_dark", d2["cardBg"] == "rgb(33, 30, 24)", d2["cardBg"])
         chk7("ye_card_ink_light", d2["cardInk"] == "rgb(236, 228, 211)", d2["cardInk"])
-        for k in ("bodyBg", "bodyImg", "htmlBg", "barBg", "searchFont", "searchBg", "bodyColor", "meta"):
-            chk7("ye_same_" + k, d2[k] == d0[k], d2[k] if d2[k] != d0[k] else "")
+        # 夜读是唯一例外：整页一起变暗（背景、顶栏、搜索、地址栏颜色），字体仍只作用于诗笺
+        chk7("ye_page_dark", d2["bodyBg"] == "rgb(23, 21, 17)", d2["bodyBg"])
+        chk7("ye_bar_changed", d2["barBg"] != d0["barBg"], d2["barBg"][:60])
+        chk7("ye_search_dark", d2["searchBg"] != d0["searchBg"], d2["searchBg"])
+        chk7("ye_body_ink_light", d2["bodyColor"] == "rgb(236, 228, 211)", d2["bodyColor"])
+        chk7("ye_meta_dark", d2["meta"] == "#171511", d2["meta"])
+        for k in ("brandFont", "searchFont"):
+            chk7("ye_font_same_" + k, d2[k] == d0[k], d2[k] if d2[k] != d0[k] else "")
+        chk7("ye_card_font_still_kai", "WenKai" in d2["cardHan"], d2["cardHan"])
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_main", not bad, bad)
+        pg.click("#btnSettings"); settle(pg, 400)
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_settings", not bad, bad)
+        pg.screenshot(path=f"{YE2}/ye2-desktop-settings-popover.png")
+        pg.keyboard.press("Escape"); settle(pg, 400)
+        pg.screenshot(path=f"{YE2}/ye2-desktop-horizontal.png")
+        pg.click('.poem-body ruby.c >> nth=2'); settle(pg, 600)
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_wordpop", not bad, bad)
+        pg.screenshot(path=f"{YE2}/ye2-desktop-word-popover.png")
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        pg.fill("#q", "春"); settle(pg, 900)
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_search", not bad, bad)
+        pg.screenshot(path=f"{YE2}/ye2-desktop-search.png")
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        pg.click("#btnBrowse"); settle(pg, 500)
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_browse", not bad, bad)
+        pg.screenshot(path=f"{YE2}/ye2-desktop-browse.png")
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        pg.click("#btnFilter"); settle(pg, 500)
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_filter", not bad, bad)
+        pg.keyboard.press("Escape"); settle(pg, 300)
+        pg.evaluate("document.getElementById('toast').textContent = '已复制'; document.getElementById('toast').classList.add('show')"); settle(pg, 400)
+        tc = pg.evaluate("(() => { const c = getComputedStyle(document.getElementById('toast')); return [c.backgroundColor, c.color]; })()")
+        chk7("ye_toast_visible", tc[0].startswith("rgba(236, 228, 211"), tc)
+        pg.evaluate("document.getElementById('toast').classList.remove('show')"); settle(pg, 300)
         # 夜读诗笺里：田字格、遮字、平仄、改读音标记都看得清（对比度）
-        pg.click('#modeSeg [data-mode="g"]'); settle(pg, 1500); pg.screenshot(path=f"{V7OUT}/04-desktop-ye-tianzige.png")
+        pg.click('#modeSeg [data-mode="g"]'); settle(pg, 1500); pg.screenshot(path=f"{V7OUT}/04-desktop-ye-tianzige.png"); pg.screenshot(path=f"{YE2}/ye2-desktop-tianzige.png")
         pg.click('#modeSeg [data-mode="v"]'); settle(pg, 1500); pg.screenshot(path=f"{V7OUT}/05-desktop-ye-vertical.png")
         pg.click('#modeSeg [data-mode="h"]'); settle(pg, 1200)
         pg.click("#togVeil"); settle(pg, 800); pg.screenshot(path=f"{V7OUT}/06-desktop-ye-veil.png"); pg.click("#togVeil"); settle(pg, 600)
         with pg.expect_download() as dl: pg.click("#btnImage")
         dl.value.save_as(f"{V7OUT}/07-export-ye-kai.png"); settle(pg, 300)
+        import shutil as _sh; _sh.copy(f"{V7OUT}/07-export-ye-kai.png", f"{YE2}/ye2-export.png")
         pg.emulate_media(media="print"); settle(pg, 300)
         pc = pg.evaluate("[getComputedStyle(document.querySelector('.poem-body ruby.c .h')).color, getComputedStyle(document.getElementById('poem')).backgroundColor]")
         chk7("print_ye_black_on_white", pc == ["rgb(31, 27, 22)", "rgb(255, 255, 255)"], pc)
@@ -975,6 +1026,25 @@ with sync_playwright() as p:
         with pg.expect_download() as dl: pg.click("#btnImage")
         dl.value.save_as(f"{V7OUT}/09-export-custom.png"); settle(pg, 300)
         pg.context.close()
+        # 夜读：地图页、学习列表也是深色；竹简：页面外框保持宣纸
+        pg = new_page(b, 1440, 1000)
+        pg.add_init_script("localStorage.setItem('yinshi:theme', JSON.stringify('ye'));")
+        pg.goto(BASE + "#map=%E6%9D%8E%E7%99%BD"); pg.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(pg, 1500)
+        pg.click('#mvList [data-mv-place="kuizhou"]'); settle(pg, 400)
+        chk7("ye_map_dark", pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor") == "rgb(23, 21, 17)")
+        bad = pg.evaluate(LIGHT_SCAN); chk7("ye_no_light_chrome_map", not bad, bad)
+        pg.screenshot(path=f"{YE2}/ye2-desktop-map.png")
+        pg.context.close()
+        pg = new_page(b, 1440, 1000)
+        pg.add_init_script("localStorage.setItem('yinshi:theme', JSON.stringify('zhu'));")
+        pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1800)
+        dz = pg.evaluate(PROBE)
+        for k in ("bodyBg", "bodyImg", "barBg", "searchBg", "bodyColor", "meta"):
+            chk7("zhu_reload_same_" + k, dz[k] == d0[k], dz[k] if dz[k] != d0[k] else "")
+        pg.screenshot(path=f"{YE2}/ye2-desktop-zhu.png")
+        pg.goto(BASE + "#map=%E6%9D%8E%E7%99%BD"); pg.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(pg, 1200)
+        chk7("zhu_map_stays_xuan", pg.evaluate("getComputedStyle(document.getElementById('mapv')).backgroundColor") == "rgb(243, 237, 225)")
+        pg.context.close()
         # 手机：竹简+楷、夜读；首屏前就套上（不闪）
         for name, th, fo in (("10-mobile-default", None, None), ("11-mobile-zhu-kai", "zhu", "kai"), ("12-mobile-ye", "ye", None)):
             m = new_page(b, 390, 844, mobile=True)
@@ -984,8 +1054,35 @@ with sync_playwright() as p:
             if init: m.add_init_script(init)
             m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1800)
             dm = m.evaluate(PROBE)
-            if th: chk7(name + "_page_same", dm["bodyBg"] == "rgb(243, 237, 225)" and dm["searchFont"] == d0["searchFont"], dm["bodyBg"])
+            if th == "ye":
+                chk7(name + "_page_dark", dm["bodyBg"] == "rgb(23, 21, 17)" and dm["searchFont"] == d0["searchFont"] and dm["meta"] == "#171511", [dm["bodyBg"], dm["meta"]])
+                bad = m.evaluate(LIGHT_SCAN); chk7(name + "_no_light_chrome", not bad, bad)
+            elif th: chk7(name + "_page_same", dm["bodyBg"] == "rgb(243, 237, 225)" and dm["searchFont"] == d0["searchFont"] and dm["meta"] == "#f3ede1", dm["bodyBg"])
             m.screenshot(path=f"{V7OUT}/{name}.png")
+            if th == "zhu": m.screenshot(path=f"{YE2}/ye2-mobile-zhu-kai.png")
+            if th == "ye":
+                m.screenshot(path=f"{YE2}/ye2-mobile-horizontal.png")
+                for _ in range(4):
+                    if m.locator(".poem.m-g").count(): break
+                    m.tap("#dMode"); settle(m, 900)
+                settle(m, 1500)
+                chk7("mobile_ye_tianzige", m.locator(".poem.m-g").count() > 0)
+                m.screenshot(path=f"{YE2}/ye2-mobile-tianzige.png")
+                m.tap('.poem-body ruby.c >> nth=1'); settle(m, 700)
+                bad = m.evaluate(LIGHT_SCAN); chk7("mobile_ye_no_light_chrome_pop", not bad, bad)
+                m.screenshot(path=f"{YE2}/ye2-mobile-word-popover.png")
+                m.keyboard.press("Escape"); settle(m, 300)
+                m.click("#btnSettings"); settle(m, 500)
+                bad = m.evaluate(LIGHT_SCAN); chk7("mobile_ye_no_light_chrome_settings", not bad, bad)
+                m.screenshot(path=f"{YE2}/ye2-mobile-settings.png")
+                m.keyboard.press("Escape"); settle(m, 300)
+                m.tap("#dSearch"); settle(m, 500); m.fill("#q2", "春"); settle(m, 1000)
+                bad = m.evaluate(LIGHT_SCAN); chk7("mobile_ye_no_light_chrome_sheet", not bad, bad)
+                m.screenshot(path=f"{YE2}/ye2-mobile-search-sheet.png")
+                m.goto(BASE + "#map=%E6%9D%8E%E6%B8%85%E7%85%A7"); m.wait_for_selector("#mapv:not([hidden]) .mv-seal"); settle(m, 900)
+                m.tap('#mvList [data-mv-place="jinhua"]'); settle(m, 500); m.evaluate("document.getElementById('mapv').scrollTop = 0"); settle(m, 200)
+                bad = m.evaluate(LIGHT_SCAN); chk7("mobile_ye_no_light_chrome_map", not bad, bad)
+                m.screenshot(path=f"{YE2}/ye2-mobile-map.png")
             m.context.close()
         results["v7"] = V7
     b.close()
