@@ -64,10 +64,11 @@
 - **8 种诗文字体**：仿宋（朱雀仿宋，默认）、宋体、楷体、黑体、小薇、毛笔、快乐、行书；只换中间诗笺上的字，只下载选中的那一种。
 - **字号、拼音大小、行距** 可调，放大后句子在格内换行、不裁切。
 - **7 种纸面**：宣纸、素笺、竹简、绢本、青花、夜读（深色）、信笺。纸面只换中间那张诗笺，页面其余部分保持宣纸样子；唯独夜读是整页变暗（顶栏、搜索、侧栏、地图、列表一起变深色，手机地址栏也变深）。纹理都是自己绘制的；还可以上传一张自己的照片当诗笺背景，调节遮罩浓淡，随时移除。
+- **设置只管诗笺**：字体、字号、纸面都只改中间的诗笺，顶栏、搜索、侧栏、菜单始终是统一的宣纸样子和仿宋字体，换来换去页面也不乱。
 - **打印与导出**：打印干净的 A4，可勾选拼音、大字、译文、注释、赏析；导出 PNG 图片（跟随纸面，带落款小印）；复制带拼音的文本。
 
-<p align="center"><img src="docs/screenshots/themes.webp" width="860" alt="七种纸面与自定义背景"></p>
-<p align="center"><img src="docs/screenshots/mobile.webp" width="760" alt="手机：作者与赏析、朗读、分类找诗"></p>
+<p align="center"><img src="docs/screenshots/themes.webp" width="860" alt="纸面只换诗笺：竹简（左，页面仍是宣纸）与夜读（右，整页变暗）"></p>
+<p align="center"><img src="docs/screenshots/mobile.webp" width="760" alt="手机：宣纸、竹简加楷体、夜读田字格与点字改读音"></p>
 
 ## 隐私
 
@@ -118,7 +119,7 @@ python3 tools/build-map.py               # 由 Natural Earth 数据生成足迹�
 
 ```bash
 pip install playwright && python3 -m playwright install chromium
-python3 tests/e2e.py              # 无头浏览器验收（录好的接口数据，不联网）；YINSHI_PART=base / v3 / v4 / v5 / v6 / visual 分段
+python3 tests/e2e.py              # 无头浏览器验收（录好的接口数据，不联网）；YINSHI_PART=base / v3 / v4 / v5 / v6 / v7 / visual 分段
 python3 tests/live_api.py         # 真实接口与 CDN：返回结构、跨域头
 python3 tests/live_browser.py https://ttnan.github.io/yinshi/   # 真实浏览器直连线上站点
 ```
