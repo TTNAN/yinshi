@@ -43,7 +43,7 @@ function stageClone(card) {
   const clone = card.cloneNode(true);
   clone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
   clone.removeAttribute("id");
-  clone.querySelectorAll(".card-gear, .card-note").forEach((el) => el.remove());
+  clone.querySelectorAll(".card-gear, .card-note, .fb-note").forEach((el) => el.remove());
   const poem = clone.querySelector(".poem");
   poem.classList.remove("ink-in");
   Object.assign(clone.style, {

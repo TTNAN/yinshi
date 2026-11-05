@@ -27,7 +27,7 @@
   --grid: #d79a90;         /* 田字格线 */
   --shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 30px 60px -30px rgba(70, 50, 25, .28), 0 8px 20px -12px rgba(70, 50, 25, .18);
   /* 诗文字体：设置里可切换，只作用于诗笺 .card（见下方 :root[data-font=…] .card）；页面其余部分固定用默认朱雀仿宋 */
-  --han: "Zhuque Fangsong", "STFangsong", "FangSong", "FangSong_GB2312", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;   /* 默认：朱雀仿宋 */
+  --han: "Zhuque Fangsong", "Noto Serif TC", "STFangsong", "FangSong", "FangSong_GB2312", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;   /* 默认：朱雀仿宋 */
   --py: "Yinshi Pinyin", "Noto Serif", "Georgia", "Times New Roman", serif;
   --ui: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --cs: 44px;              /* 汉字字号，JS 按版面自适应 */
@@ -54,14 +54,20 @@
   --seal-ink: #fbf1ea;
 }
 
-:root[data-font="song"] .card { --han: "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="kai"] .card { --han: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
-:root[data-font="hei"] .card { --han: "Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+:root[data-font="song"] .card { --han: "Noto Serif SC", "Noto Serif TC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="kai"] .card { --han: "LXGW WenKai", "LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
+:root[data-font="hei"] .card { --han: "Noto Sans SC", "Noto Sans TC", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
 /* 以下几种字库只收常用简体字：缺字（多为繁体）时先用同类、带繁体的字体补（小薇→思源宋体，快乐→思源黑体，毛笔 / 行书→霞鹜文楷，fonts.js 会一并载入），不让一行里混进差得很远的系统字体 */
-:root[data-font="xiaowei"] .card { --han: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="mashan"] .card { --han: "Ma Shan Zheng", "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="kuaile"] .card { --han: "ZCOOL KuaiLe", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
-:root[data-font="longcang"] .card { --han: "Long Cang", "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="xiaowei"] .card { --han: "Yinshi XiaoWei Fix", "ZCOOL XiaoWei", "Noto Serif SC", "Noto Serif TC", "Songti SC", "STSong", "SimSun", serif; }   /* Yinshi XiaoWei Fix：只含站酷小薇画坏的 8 个字（回等），修好后排在最前 */
+:root[data-font="mashan"] .card { --han: "Ma Shan Zheng", "LXGW WenKai", "LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="kuaile"] .card { --han: "ZCOOL KuaiLe", "Noto Sans SC", "Noto Sans TC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+:root[data-font="longcang"] .card { --han: "Long Cang", "LXGW WenKai", "LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+/* 字体栈里的 … TC：同一设计的繁体版，只在繁体时载入（fonts.js setTrad），补 Google 简体版没收的繁体字；简体下不下载。
+   繁体下诗笺上有这种字体没有的字（data-tfb，由 main.js 按当前这首诗判断）：整张诗笺换成同类、带繁体的字体，不在一首诗里逐字混排 */
+:root[data-font="xiaowei"] .card[data-tfb] { --han: "Noto Serif SC", "Noto Serif TC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="mashan"] .card[data-tfb], :root[data-font="longcang"] .card[data-tfb] { --han: "LXGW WenKai", "LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
+:root[data-font="kuaile"] .card[data-tfb] { --han: "Huninn", "Noto Sans SC", "Noto Sans TC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+.card-tip .fb-note { font-size: 12.5px; color: var(--ink-3); letter-spacing: .04em; }
 
 /* ---------- 主题（设置 → 纸面）：只作用于中间的诗笺 .card（页面其余部分始终是宣纸默认样子；夜读例外，整页变暗）。只改颜色与纸纹，版式不变。纹理都是 CSS / 内联 SVG 自绘 ---------- */
 /* 素笺：白纸 */
@@ -589,7 +595,7 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .font-grid [data-font="song"] .fn { font-family: "Noto Serif SC", "Songti SC", "STSong", serif; }
 .font-grid [data-font="kai"] .fn { font-family: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", serif; }
 .font-grid [data-font="hei"] .fn { font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
-.font-grid [data-font="xiaowei"] .fn { font-family: "ZCOOL XiaoWei", serif; }
+.font-grid [data-font="xiaowei"] .fn { font-family: "Yinshi XiaoWei Fix", "ZCOOL XiaoWei", serif; }
 .font-grid [data-font="mashan"] .fn { font-family: "Ma Shan Zheng", "Kaiti SC", "KaiTi", serif; }
 .font-grid [data-font="kuaile"] .fn { font-family: "ZCOOL KuaiLe", sans-serif; }
 .font-grid [data-font="longcang"] .fn { font-family: "Long Cang", "Kaiti SC", "KaiTi", serif; }

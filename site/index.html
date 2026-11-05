@@ -16,15 +16,15 @@
 <meta name="twitter:description" content="吟诗：读一首带拼音的古诗。今日一诗、横排竖排田字格、飞花令、遮字背诵、课本读音修正。">
 <meta name="twitter:image" content="https://ttnan.github.io/yinshi/assets/logo.png">
 <link rel="canonical" href="https://ttnan.github.io/yinshi/">
-<link rel="icon" href="favicon.svg?v=202611050450" type="image/svg+xml">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=202611050450">
+<link rel="icon" href="favicon.svg?v=202611050639" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=202611050639">
 <link rel="preconnect" href="https://fonts.googleapis.cn">
 <link rel="preconnect" href="https://fonts.gstatic.cn" crossorigin>
 <script>
 /* 首屏前套用上次选的诗文字体，只加载那一种（默认朱雀仿宋，本站托管）。地址与 assets/js/fonts.js 保持一致 */
 (function () {
   var G = "https://fonts.googleapis.cn/css2?family=";
-  var u = { fang: "fonts/zhuque-fangsong/zhuque-fangsong.css?v=202611050450",
+  var u = { fang: "fonts/zhuque-fangsong/zhuque-fangsong.css?v=202611050639",
             song: G + "Noto+Serif+SC:wght@400&display=swap",
             kai: "https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css",
             hei: G + "Noto+Sans+SC:wght@400&display=swap",
@@ -39,17 +39,30 @@
   /* 只有简体字形的展示字体：同时载入补繁体字的同类字体（与 fonts.js 的 fb 一致） */
   var fb = { xiaowei: "song", mashan: "kai", kuaile: "hei", longcang: "kai" }[k];
   if (fb) document.write('<link rel="stylesheet" id="font-' + fb + '" href="' + u[fb] + '">');
+  /* 站酷小薇画坏的 8 个字（回等）的修补版，只有几 KB */
+  if (k === "xiaowei") document.write('<link rel="stylesheet" id="font-xiaowei-fix" href="fonts/zcool-xiaowei-fix/zcool-xiaowei-fix.css?v=202611050639">');
+  /* 繁体下这四种缺字时整首改用的字体（与 fonts.js 的 tfb 一致）；只载入样式表，用到时才下载字形 */
+  try { if (JSON.parse(localStorage.getItem("yinshi:lang")) === "hant") {
+    var tfb = { xiaowei: "song", mashan: "kai", kuaile: "huninn", longcang: "kai" }[k];
+    u.huninn = G + "Huninn&display=swap";
+    if (tfb && tfb !== fb) document.write('<link rel="stylesheet" id="font-' + tfb + '" href="' + u[tfb] + '">');
+    /* 繁体同款（TC）：补 Google 简体版字体没收的繁体字（与 fonts.js 的 tc 一致） */
+    var tcu = { serif_tc: G + "Noto+Serif+TC:wght@400&display=swap", sans_tc: G + "Noto+Sans+TC:wght@400&display=swap", kai_tc: G + "LXGW+WenKai+TC&display=swap" };
+    var tcm = { fang: "serif_tc", song: "serif_tc", hei: "sans_tc", kai: "kai_tc", huninn: "sans_tc" }, tcs = {};
+    [k, fb, tfb].forEach(function (x) { if (x && tcm[x]) tcs[tcm[x]] = 1; });
+    for (var t in tcs) document.write('<link rel="stylesheet" id="font-' + t + '" href="' + tcu[t] + '">');
+  } } catch (e) { /* 存储不可用 */ }
 })();
 </script>
 <link rel="preload" href="fonts/noto-serif-latin-ext-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/css/yinshi.css?v=202611050450">
+<link rel="stylesheet" href="assets/css/yinshi.css?v=202611050639">
 </head>
 <body>
 <a class="skip" href="#poem">跳到诗文</a>
 
 <header class="topbar" role="banner">
   <a class="brand" href="./" aria-label="吟诗 首页">
-    <img class="seal-img" src="assets/logo.svg?v=202611050450" width="36" height="36" alt="" aria-hidden="true">
+    <img class="seal-img" src="assets/logo.svg?v=202611050639" width="36" height="36" alt="" aria-hidden="true">
     <span class="brand-name">吟诗</span>
   </a>
 
@@ -209,29 +222,29 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 
-<script src="poem/config.js?v=202611050450"></script>
+<script src="poem/config.js?v=202611050639"></script>
 <script src="vendor/pinyin-pro-3.29.5.min.js"></script>
 <!-- 发版时把所有 ?v= 改成新的版本号（tools/bump-version.sh），避免浏览器拿旧缓存的脚本和样式拼在一起 -->
 <script type="importmap">
 {
   "imports": {
-    "./assets/js/api.js": "./assets/js/api.js?v=202611050450",
-    "./assets/js/cp.js": "./assets/js/cp.js?v=202611050450",
-    "./assets/js/lists.js": "./assets/js/lists.js?v=202611050450",
-    "./assets/js/map.js": "./assets/js/map.js?v=202611050450",
-    "./assets/js/practice.js": "./assets/js/practice.js?v=202611050450",
-    "./assets/js/study.js": "./assets/js/study.js?v=202611050450",
-    "./assets/js/themes.js": "./assets/js/themes.js?v=202611050450",
-    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202611050450",
-    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202611050450",
-    "./assets/js/main.js": "./assets/js/main.js?v=202611050450",
-    "./assets/js/reading.js": "./assets/js/reading.js?v=202611050450",
-    "./assets/js/render.js": "./assets/js/render.js?v=202611050450",
-    "./assets/js/store.js": "./assets/js/store.js?v=202611050450",
-    "./assets/js/zh.js": "./assets/js/zh.js?v=202611050450"
+    "./assets/js/api.js": "./assets/js/api.js?v=202611050639",
+    "./assets/js/cp.js": "./assets/js/cp.js?v=202611050639",
+    "./assets/js/lists.js": "./assets/js/lists.js?v=202611050639",
+    "./assets/js/map.js": "./assets/js/map.js?v=202611050639",
+    "./assets/js/practice.js": "./assets/js/practice.js?v=202611050639",
+    "./assets/js/study.js": "./assets/js/study.js?v=202611050639",
+    "./assets/js/themes.js": "./assets/js/themes.js?v=202611050639",
+    "./assets/js/exporter.js": "./assets/js/exporter.js?v=202611050639",
+    "./assets/js/fonts.js": "./assets/js/fonts.js?v=202611050639",
+    "./assets/js/main.js": "./assets/js/main.js?v=202611050639",
+    "./assets/js/reading.js": "./assets/js/reading.js?v=202611050639",
+    "./assets/js/render.js": "./assets/js/render.js?v=202611050639",
+    "./assets/js/store.js": "./assets/js/store.js?v=202611050639",
+    "./assets/js/zh.js": "./assets/js/zh.js?v=202611050639"
   }
 }
 </script>
-<script type="module" src="assets/js/main.js?v=202611050450"></script>
+<script type="module" src="assets/js/main.js?v=202611050639"></script>
 </body>
 </html>

@@ -1284,15 +1284,69 @@ with sync_playwright() as p:
             pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
             open_q(pg, "望西飞")
             set_lang(pg, "hant")
-            # 其他字体：缺繁体字形的展示字体按同类字体补字
-            for key, fams in (("song", "Noto Serif SC"), ("kai", "LXGW WenKai"), ("hei", "Noto Sans SC"), ("xiaowei", "ZCOOL XiaoWei|Noto Serif SC"),
-                              ("mashan", "Ma Shan Zheng|LXGW WenKai"), ("kuaile", "ZCOOL KuaiLe|Noto Sans SC"), ("longcang", "Long Cang|LXGW WenKai")):
-                pg.click("#btnSettings"); settle(pg, 250); pg.click(f'[data-font="{key}"]'); settle(pg, 2200); pg.keyboard.press("Escape"); settle(pg, 400)
-                pg.evaluate("document.fonts.ready"); settle(pg, 600)
+            # 其他字体：繁体下整首诗由同一种字体画出。小薇 / 毛笔 / 快乐 / 行书只收简体字，诗笺上有缺字就整张换成同类字体（data-tfb）并注明
+            # 每种字体在繁体下应当画出全部字的字体族（…TC 是同一设计的繁体版，补 Google 简体版没收的繁体字）
+            ONE = {"fang": "Zhuque Fangsong", "song": "Noto Serif SC|Noto Serif TC", "kai": "LXGW WenKai|LXGW WenKai TC", "hei": "Noto Sans SC|Noto Sans TC",
+                   "xiaowei": "Noto Serif SC|Noto Serif TC", "mashan": "LXGW WenKai|LXGW WenKai TC", "kuaile": "Huninn|Noto Sans SC|Noto Sans TC", "longcang": "LXGW WenKai|LXGW WenKai TC"}
+            TFB = {"xiaowei": "song", "mashan": "kai", "kuaile": "huninn", "longcang": "kai"}
+            def pick_font(page, key, fast=False):
+                page.click("#btnSettings"); settle(page, 250); page.click(f'[data-font="{key}"]'); settle(page, 500 if fast else 2200); page.keyboard.press("Escape"); settle(page, 200 if fast else 400)
+                page.evaluate("document.fonts.ready"); settle(page, 200 if fast else 600)
+            for key in ("song", "kai", "hei", "xiaowei", "mashan", "kuaile", "longcang"):
+                fams = ONE[key]
+                pick_font(pg, key)
                 f = pg.evaluate(FACE_PROBE, fams)
                 chk8(f"hant_glyphs_{key}", not f["miss"], f)
+                if key in TFB:
+                    st = pg.evaluate("({ tfb: document.getElementById('poem').dataset.tfb || '', note: (document.querySelector('#cardTip .fb-note') || {}).textContent || '' })")
+                    chk8(f"hant_whole_poem_{key}", st["tfb"] == TFB[key] and "没有繁体字形" in st["note"], st)
                 if key in ("xiaowei", "longcang"): pg.screenshot(path=f"{V8OUT}/after-desktop-hant-font-{key}.png")
-            pg.click("#btnSettings"); settle(pg, 250); pg.click('[data-font="fang"]'); settle(pg, 1200); pg.keyboard.press("Escape"); settle(pg, 300)
+            # ---- 每种字体 × 繁体：诗笺上没有黑方块 / 空白 / 缺字方框（用户报的小薇「回」显示成黑块） ----
+            # 在 canvas 上用诗笺当前的字体栈逐字画出来：最大实心正方形（64px 下正常字 ≤ 13px，黑方块 ≥ 28px）、无墨（空白字）、
+            # 与画一个不存在的字（U+10FFFD，必然是缺字方框）完全一样 —— 都算坏字
+            BOX_PROBE = """async ([fam, text]) => {
+              const chars = [...new Set([...text].filter((ch) => /\\p{Script=Han}/u.test(ch)))];
+              fam = fam || getComputedStyle(document.querySelector('.poem')).getPropertyValue('--han').trim();
+              try { await Promise.race([document.fonts.load('64px ' + fam, chars.join('')), new Promise((r) => setTimeout(r, 15000))]); } catch (e) {}
+              await document.fonts.ready;
+              const c = document.createElement('canvas'); c.width = c.height = 80; const x = c.getContext('2d', { willReadFrequently: true });
+              x.font = '64px ' + fam; x.textBaseline = 'top'; x.fillStyle = '#000';
+              const draw = (ch) => { x.clearRect(0, 0, 80, 80); x.fillText(ch, 8, 6); const d = x.getImageData(0, 0, 80, 80).data; const a = new Uint8Array(6400); for (let i = 0; i < 6400; i++) a[i] = d[i * 4 + 3] > 128 ? 1 : 0; return a; };
+              const sq = (a) => { const S = new Int32Array(81 * 81); for (let i = 0; i < 80; i++) for (let j = 0; j < 80; j++) S[(i + 1) * 81 + j + 1] = a[i * 80 + j] + S[i * 81 + j + 1] + S[(i + 1) * 81 + j] - S[i * 81 + j];
+                let best = 0; for (let k = 6; k < 60; k++) { let hit = false; for (let i = k; i <= 80 && !hit; i++) for (let j = k; j <= 80; j++) if (S[i * 81 + j] - S[(i - k) * 81 + j] - S[i * 81 + j - k] + S[(i - k) * 81 + j - k] === k * k) { hit = true; break; } if (!hit) break; best = k; } return best; };
+              const tofu = draw(String.fromCodePoint(0x10FFFD)).join('');
+              const out = { n: chars.length, box: [], blank: [], tofu: [], maxSq: 0 };
+              for (const ch of chars) { const a = draw(ch); let ink = 0; for (const v of a) ink += v;
+                if (!ink) { out.blank.push(ch); continue; }
+                if (a.join('') === tofu) { out.tofu.push(ch); continue; }
+                const m = sq(a); out.maxSq = Math.max(out.maxSq, m); if (m >= 18) out.box.push(ch + m); }
+              return out; }"""
+            def card_text(page):
+                return page.evaluate("document.getElementById('poemView').textContent")
+            ALLF = ["fang", "song", "kai", "hei", "xiaowei", "mashan", "kuaile", "longcang"]
+            for q in ("回乡偶书", "望西飞", "静夜思", "登鹳雀楼"):
+                open_q(pg, q)
+                for key in ALLF:
+                    pick_font(pg, key, True)
+                    r = pg.evaluate(BOX_PROBE, ["", card_text(pg)])
+                    chk8(f"hant_no_box_{q}_{key}", r["n"] > 8 and not r["box"] and not r["blank"] and not r["tofu"], r)
+                    f = pg.evaluate(FACE_PROBE, ONE[key])
+                    chk8(f"hant_one_font_{q}_{key}", not f["miss"] and (key not in TFB or pg.evaluate("!!document.getElementById('poem').dataset.tfb")), f)
+                    if q == "回乡偶书": pg.locator("#poem").screenshot(path=f"{V8OUT}/trad-e2e-{key}.png")
+            # 课本 72 首全部转成繁体，逐字在每种字体（及其繁体替换字体）里画一遍；小薇的 8 个修补字简繁都查
+            sweep = pg.evaluate("""async () => { const d = await (await fetch('poem/daily-poems.json')).json(); const zh = await import('./assets/js/zh.js'); await zh.load();
+              const s = d.poems.map((p) => p.t + p.a + p.lines.join('')).join(''); return { s, t: zh.s2t(s) }; }""")
+            STACK = {"fang": '"Zhuque Fangsong", "Noto Serif TC"', "song": '"Noto Serif SC", "Noto Serif TC"', "kai": '"LXGW WenKai", "LXGW WenKai TC"', "hei": '"Noto Sans SC", "Noto Sans TC"', "huninn": '"Huninn", "Noto Sans SC", "Noto Sans TC"',
+                     "xiaowei": '"Yinshi XiaoWei Fix", "ZCOOL XiaoWei", "Noto Serif SC"', "mashan": '"Ma Shan Zheng", "LXGW WenKai"',
+                     "kuaile": '"ZCOOL KuaiLe", "Noto Sans SC"', "longcang": '"Long Cang", "LXGW WenKai"'}
+            pick_font(pg, "xiaowei")
+            r = pg.evaluate(BOX_PROBE, [STACK["xiaowei"], "回圃圄圊崮徊痼蛔" + sweep["s"]])
+            chk8("xiaowei_fixed_glyphs_hans", not r["box"] and not r["blank"] and not r["tofu"], r)
+            pg.evaluate("document.fonts.load('64px \"Huninn\"', '回')")
+            for key in ("fang", "song", "kai", "hei", "huninn"):
+                r = pg.evaluate(BOX_PROBE, [STACK[key], sweep["t"]])
+                chk8(f"sweep_daily_hant_{key}", r["n"] > 700 and not r["box"] and not r["blank"] and not r["tofu"], {k: v for k, v in r.items()})
+            pick_font(pg, "fang")
             pg.context.close()
             m = new_page(b, 390, 844, mobile=True)
             m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1500)

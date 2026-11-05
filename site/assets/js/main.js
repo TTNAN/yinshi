@@ -244,6 +244,7 @@ function draw(animate = false) {
   };
   applyDisplay();
   renderPoem($("poemView"), disp, state.ann, { ...state.view, hi: toDisp(state.view.hi), animate, sub: splitTitle(disp.title).sub, authorKey: simp.author });
+  syncTradFont();
   // 底注：课本版切换
   const note = $("cardNote");
   if (state.alt) {
@@ -254,6 +255,7 @@ function draw(animate = false) {
   } else { note.hidden = true; note.innerHTML = ""; }
   document.title = `${disp.title} · ${disp.author ? disp.author + " · " : ""}吟诗`;
   syncControls();
+  state.pz = pz;
   drawTip(pz);
   syncStudy();
   drawSide();
@@ -693,6 +695,7 @@ function settingsPop(anchor) {
 
 function setFont(k) {
   fonts.choose(k);
+  if (state.poem) { syncTradFont(); drawTip(state.pz); }
   document.querySelectorAll("#pop [data-font]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.font === k)));
   if (state.poem) fit($("poemView"), state.view.mode);
   fonts.ready(state.poem ? state.poem.title + state.poem.lines.join("") : "").then(() => state.poem && fit($("poemView"), state.view.mode));
@@ -760,6 +763,7 @@ async function setLang(l) {
     try { await zh.load(); } catch (e) { toast("繁体字表没有载入，请检查网络"); return; }
   }
   state.lang = l; store.set("lang", l);
+  fonts.setTrad(l === "hant");
   api.setLang(LANGS[l][1]);
   document.documentElement.lang = LANGS[l][1];
   document.querySelectorAll("#pop [data-lang]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lang === l)));
@@ -995,9 +999,21 @@ function bind() {
 
 /* ---------------- 学习：朗读 · 默写 · 收藏 · 背诵打卡 · 平仄提示 ---------------- */
 const pkey = (p) => { const s = view(p).simp; return baseTitle(s.title) + "|" + s.author; };
+// 繁体 + 只收简体字的展示字体（小薇 / 毛笔 / 快乐 / 行书）：诗笺上有缺字就整首换成同类字体（见 fonts.js tradFallback）
+function syncTradFont() {
+  const card = $("poem");
+  const fb = state.poem && hant() ? fonts.tradFallback(fonts.current(), $("poemView").textContent) : null;
+  state.tfb = fb;
+  if (fb) card.dataset.tfb = fb.key; else delete card.dataset.tfb;
+  return fb;
+}
 function drawTip(pz) {
   const tip = $("cardTip");
   const parts = [];
+  if (state.tfb) {
+    const f = fonts.FONTS[fonts.current()];
+    parts.push(`<span class="fb-note" title="${esc(f.name)}缺：${esc(state.tfb.miss.join(""))}">${esc(f.note)}没有繁体字形，本首整首改用${esc(state.tfb.note)}</span>`);
+  }
   if (state.settings.pingze) {
     parts.push(pz ? `<span class="pz-legend"><i class="pz pz-p">—</i>平 <i class="pz pz-z">|</i>仄 <i class="pz pz-r">|</i>入声（按仄）<small>参考</small></span>`
       : `<span class="muted">平仄只标五七言绝句、律诗</span>`);
@@ -1654,6 +1670,7 @@ async function boot() {
   if (tag) state.view.today = true, draw(false);
   handleHash();
 }
+fonts.setTrad(state.lang === "hant");
 fonts.apply();
 themes.apply();
 boot();

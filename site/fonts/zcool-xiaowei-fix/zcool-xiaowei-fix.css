@@ -1,0 +1,3 @@
+/* 站酷小薇补丁 Yinshi XiaoWei Fix —— 只含站酷小薇 v1.000 里轮廓方向画错（显示成黑方块）的 8 个字：回圃圄圊崮徊痼蛔。
+   修好方向后另起名字（tools/build-xiaowei-fix.py 生成）。© The ZCOOL XiaoWei Project Authors，SIL Open Font License 1.1（见 OFL.txt）。 */
+@font-face{font-family:"Yinshi XiaoWei Fix";src:url("./cad4813199c8bb4d.woff2")format("woff2");font-style:normal;font-weight:400;font-display:swap;unicode-range:U+56DE,U+5703,U+5704,U+570A,U+5D2E,U+5F8A,U+75FC,U+86D4}
