@@ -1,6 +1,9 @@
 // 注音：pinyin-pro 出基础读音 → 课本修正 → 吟诵旧读 → 用户自定义
 const PP = window.pinyinPro;
 export const HAN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u{20000}-\u{2FA1F}]/u;
+// 虚缺号：古籍整理里原文缺字的占位（□ 最常见，也有 ■ ○ ◻ ▢ ☐ ⬜ 之类）。显示成一个空字格，不注音、不朗读、不挖空默写
+export const MISS = /[\u25A0-\u25A2\u25AB\u25CB\u25EF\u25FB\u25FC\u2610\u2B1A\u2B1C]/u;
+export const MISS_G = new RegExp(MISS.source, "gu");
 
 let FIX = { textbook: [], recite: [] };
 
@@ -20,7 +23,8 @@ function baseReadings(line) {
   if (!arr || arr.length !== chars.length) {
     arr = chars.map((ch) => (HAN.test(ch) ? { origin: ch, pinyin: PP.pinyin(ch, { toneSandhi: false }), isZh: true } : { origin: ch, pinyin: "", isZh: false }));
   }
-  return chars.map((ch, i) => ({ ch, py: HAN.test(ch) ? (arr[i].pinyin || "") : "", han: HAN.test(ch) }));
+  return chars.map((ch, i) => (MISS.test(ch) ? { ch, py: "", han: false, miss: true }
+    : { ch, py: HAN.test(ch) ? (arr[i].pinyin || "") : "", han: HAN.test(ch) }));
 }
 
 function applyFixes(cells, line, list, set) {

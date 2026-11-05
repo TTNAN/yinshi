@@ -20,7 +20,8 @@
 - **点词看注释**：收录赏析的诗里，难懂的词下面有朱色虚线，点一下先看释义，再选读音。
 - **作者与赏析**：宽屏时诗笺左边是作者生平（朝代、生卒年、字号、简介、代表作），右边是诗意、情感、创作背景和「相关的诗」；手机上收在诗笺下方，点开再看。
 - **平仄标注（参考）**：五七言绝句、律诗可以在每个字下标出平（—）仄（|），常见入声字按仄声标出。
-- **简体 / 繁體** 一键切换，注音、注释、赏析一起转换。
+- **简体 / 繁體** 一键切换，注音、注释、赏析一起转换。默认的朱雀仿宋收有繁体字形，繁体下整首诗仍是同一种字；小薇、毛笔、快乐、行书四种字体只有简体字，缺的繁体字由同类字体补上（小薇→思源宋体，快乐→思源黑体，毛笔、行书→霞鹜文楷）。
+- **缺字与长标题**：古籍里原文缺字的「□」（虚缺号）显示成和汉字一样大的淡墨虚线空格，拼音位留空，行与行照样对齐；鼠标停上去提示「原文缺字」，朗读时跳过，默写不会挖到它。「词牌·题目」中间的间隔号居中、不留怪空隙；特别长的标题自己分成长短均匀的几行，不再把正文字号拖小。
 
 ### 学习与背诵
 
@@ -89,7 +90,7 @@
 | 足迹地图的河流、湖泊 | [Natural Earth](https://www.naturalearthdata.com/) 1:10m 河流中心线与湖泊（由 `tools/build-map.py` 简化成 `site/data/rivers.json`） | 公有领域 |
 | 拼音 | [pinyin-pro](https://github.com/zh-lx/pinyin-pro) | MIT |
 | 简繁转换 | [opencc-js](https://github.com/nk2028/opencc-js)（词典来自 OpenCC） | MIT / Apache-2.0 |
-| 字体 | [朱雀仿宋](https://github.com/TrionesType/zhuque)（本站托管分片版，来自 [中文网字计划](https://chinese-font.netlify.app)）、[霞鹜文楷](https://github.com/lxgw/LxgwWenKai)、思源宋体 / 思源黑体（Noto Serif SC / Noto Sans SC）、站酷小薇、马善政楷书、站酷快乐体、龙藏体、Noto Serif（拼音） | SIL OFL 1.1 |
+| 字体 | [朱雀仿宋](https://github.com/TrionesType/zhuque)（本站托管 v0.212 分片版，含繁体字形；由 `tools/build-zhuque.py` 按原 [中文网字计划](https://chinese-font.netlify.app) 的分片重新切分）、[霞鹜文楷](https://github.com/lxgw/LxgwWenKai)、思源宋体 / 思源黑体（Noto Serif SC / Noto Sans SC）、站酷小薇、马善政楷书、站酷快乐体、龙藏体、Noto Serif（拼音） | SIL OFL 1.1 |
 
 感谢以上项目的作者与维护者。也感谢 [tjsky/pinyin-annotator](https://github.com/tjsky/pinyin-annotator) 带来的最初灵感（吟诗是独立重写的项目，不含它的代码）。完整的第三方许可见 [LICENSE](LICENSE)。
 
@@ -111,6 +112,7 @@ node tools/build-cp-index.mjs            # 重新生成唐诗宋诗索引（下�
 python3 tools/content/build.py           # 由 tools/content/ 生成作者、赏析、分类数据
 python3 tools/content/footprints.py      # 生成诗人足迹 site/data/footprints.json
 python3 tools/build-map.py               # 由 Natural Earth 数据生成足迹地图的山河底图 site/data/rivers.json
+python3 tools/build-zhuque.py ZhuqueFangsong-Regular.ttf   # 用朱雀仿宋新版重新切分 site/fonts/zhuque-fangsong/（繁体字单独成片）
 ```
 
 诗词接口地址、限流与超时在 `site/poem/config.js`；读音修正表在 `site/poem/poem-readings.json`（每条 `{"p": "[朝]辞白帝", "r": "zhāo"}`，用 `[ ]` 标出要修正的字，整段片段出现时才生效）。
@@ -119,7 +121,7 @@ python3 tools/build-map.py               # 由 Natural Earth 数据生成足迹�
 
 ```bash
 pip install playwright && python3 -m playwright install chromium
-python3 tests/e2e.py              # 无头浏览器验收（录好的接口数据，不联网）；YINSHI_PART=base / v3 / v4 / v5 / v6 / v7 / visual 分段
+python3 tests/e2e.py              # 无头浏览器验收（录好的接口数据，不联网）；YINSHI_PART=base / v3 / v4 / v5 / v6 / v7 / v8 / v8m / visual 分段（v8 / v8m：缺字格、长标题、繁体字形）
 python3 tests/live_api.py         # 真实接口与 CDN：返回结构、跨域头
 python3 tests/live_browser.py https://ttnan.github.io/yinshi/   # 真实浏览器直连线上站点
 ```

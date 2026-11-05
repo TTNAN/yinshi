@@ -150,7 +150,7 @@ async function paint(card, bg, extras = []) {
   if (grid) {
     const lineC = TC.grid, soft = TC.grid;
     // 拼音四线三格：只画在汉字上，标点格没有（与页面一致）
-    poem.querySelectorAll(".poem-body ruby.c rt").forEach((el) => {
+    poem.querySelectorAll(".poem-body ruby.c rt, .poem-body .mc .rt").forEach((el) => {
       const r = el.getBoundingClientRect();
       const x = X(r), y = Y(r), w = r.width, hh = r.height;
       ctx.strokeStyle = lineC; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, hh - 1);
@@ -172,10 +172,18 @@ async function paint(card, bg, extras = []) {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     if (+s.opacity === 0) return;
+    if (el.parentElement.classList.contains("mc")) {
+      // 缺字格：画和屏幕上一样的淡墨虚线框
+      const b = getComputedStyle(el, "::before");
+      const t = parseFloat(b.top) || 0, l = parseFloat(b.left) || 0, rr = parseFloat(b.right) || 0, bb = parseFloat(b.bottom) || 0;
+      ctx.save(); ctx.strokeStyle = s.color; ctx.globalAlpha = .55; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.strokeRect(X(r) + l + .5, Y(r) + t + .5, r.width - l - rr - 1, r.height - t - bb - 1); ctx.restore();
+      return;
+    }
     ctx.font = fontOf(el); ctx.fillStyle = s.color;
     const size = parseFloat(s.fontSize);
     let cx = X(r) + r.width / 2, cy = Y(r) + r.height / 2;
-    if (el.parentElement.classList.contains("pc")) {
+    if (el.parentElement.classList.contains("pc") && !el.parentElement.classList.contains("mid")) {   // 间隔号「·」居中，不按标点靠左
       if (vertical) { cx = X(r) + r.width / 2 + size * .3; cy = Y(r) + size * .3; }
       else if (grid && el.firstChild) {
         // 按页面上标点字形实际所在的位置画（各字体的标点字面位置不同，用固定偏移会压到格线）
@@ -263,6 +271,7 @@ export function poemToText(poem, ann) {
     const parts = [];
     cells.forEach((c) => {
       if (c.han) parts.push(c.py);
+      else if (c.miss) parts.push("□");
       else if (parts.length && c.ch.trim()) parts[parts.length - 1] += c.ch;
     });
     return parts.join(" ");

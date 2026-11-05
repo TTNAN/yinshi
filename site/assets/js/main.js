@@ -1397,7 +1397,7 @@ async function doPrintList(l) {
     const n = noteFor(p);
     const ex = [o.yi && n && n.yi ? `<h4>译文</h4><p>${esc(toDisp(n.yi))}</p>` : "", o.ci && n && n.ci ? `<h4>注释</h4><p>${esc(Object.entries(n.ci).map(([w, m]) => `${toDisp(w)}：${toDisp(m)}`).join("；"))}</p>` : ""].join("");
     return `<section class="pl-poem"><h2><span class="pl-n">${i + 1}</span>${esc(splitTitle(disp.title).main)}</h2><p class="pl-meta">${esc([disp.dynasty, disp.author].filter(Boolean).join(" · "))}</p>
-      ${lines.map((cells) => `<p class="pl-line">${cells.map((c) => c.han ? `<span class="pl-c"><i>${esc(c.py)}</i><b>${esc(c.ch)}</b></span>` : `<span class="pl-c pl-p"><i></i><b>${esc(c.ch)}</b></span>`).join("")}</p>`).join("")}${ex ? `<div class="pl-ex">${ex}</div>` : ""}</section>`;
+      ${lines.map((cells) => `<p class="pl-line">${cells.map((c) => c.han ? `<span class="pl-c"><i>${esc(c.py)}</i><b>${esc(c.ch)}</b></span>` : c.miss ? `<span class="pl-c pl-m" title="原文缺字"><i></i><b>\u3000</b></span>` : `<span class="pl-c pl-p"><i></i><b>${esc(c.ch)}</b></span>`).join("")}</p>`).join("")}${ex ? `<div class="pl-ex">${ex}</div>` : ""}</section>`;
   }).join("");
   document.body.classList.add("print-listing");
   document.body.classList.toggle("print-nopy", !o.py);

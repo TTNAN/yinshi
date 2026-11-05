@@ -5,6 +5,8 @@ import * as store from "./store.js";
 const HAN = /[\u3400-\u9fff\uf900-\ufaff]/;
 const hanOnly = (s) => Array.from(String(s || "")).filter((c) => HAN.test(c)).join("");
 const PUNCT = /[，。！？；：、,.!?;:]/;
+// 虚缺号（原文缺字的 □ 等，与 reading.js 的 MISS 一致）：算作一个字位，但不读、不挖空
+const MISS_G = /[\u25A0-\u25A2\u25AB\u25CB\u25EF\u25FB\u25FC\u2610\u2B1A\u2B1C]/gu;
 export const DAY = 864e5;
 
 /* ---------------- 日期（按北京时间） ---------------- */
@@ -48,7 +50,7 @@ const isZe = (py) => /[ǎěǐǒǔǚàèìòùǜ]/.test(py);
 
 /** 五七言绝句 / 律诗（每句 5 或 7 字、4 或 8 句）才标平仄 */
 export function isJinti(lines) {
-  const clauses = lines.join("").split(PUNCT).map(hanOnly).filter(Boolean);
+  const clauses = lines.join("").replace(MISS_G, "\u4e00").split(PUNCT).map(hanOnly).filter(Boolean);
   if (![4, 8].includes(clauses.length)) return false;
   const n = clauses[0].length;
   return (n === 5 || n === 7) && clauses.every((c) => c.length === n);
@@ -186,7 +188,7 @@ export async function speakLines(lines, { rate = 0.9, loop = false, onChar = () 
   const seq = speakSeq;
   await ttsReady();
   const sayOne = (li) => new Promise((res) => {
-    const text = lines[li].text;
+    const text = lines[li].text.replace(MISS_G, "\u3000");     // 缺字不念（换成等长的空格，字序不变）
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.lang = voice ? voice.lang : "zh-CN";

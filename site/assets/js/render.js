@@ -2,6 +2,7 @@
 
 const CLOSE_PUNCT = /[，。！？；、：,.!?;:）」』》”’…—]/;
 const OPEN_PUNCT = /[（「『《“‘]/;
+const DOT = /^[\u00B7\u2022\u2027\u2219\u22C5\u30FB\uFF65]$/;     // 间隔号：词牌·题目、人名间的「·」
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // 一行 → 若干「分句」（句末标点跟着前一句），分句内部不换行
@@ -19,10 +20,26 @@ export function splitClauses(cells) {
   return out;
 }
 
+// 标题按「字 + 跟着它的标点」分组，组与组之间才能换行（标点、间隔号不会落到行首）
+function titleGroups(cells) {
+  const out = [];
+  let cur = [];
+  cells.forEach((c) => {
+    const attach = !c.han && !c.miss && (CLOSE_PUNCT.test(c.ch) || DOT.test(c.ch));
+    const prevOpen = cur.length && OPEN_PUNCT.test(cur[cur.length - 1].ch);
+    if (cur.length && !attach && !prevOpen) { out.push(cur); cur = []; }
+    cur.push(c);
+  });
+  if (cur.length) out.push(cur);
+  return out;
+}
+
 let seq = 0;
 function cellHTML(c) {
-  const i = seq++;
-  if (!c.han) return `<span class="pc" aria-hidden="${/\s/.test(c.ch)}"><span class="h">${esc(c.ch)}</span></span>`;
+  const i = Math.min(seq++, 60);     // 墨晕动画延迟上限：长诗、长标题最多约 1 秒内全部显出
+  // 虚缺号 □：和汉字一样大的空字格（淡墨虚线框），拼音位留空，行与行照样对齐；不能点、不朗读、不挖空
+  if (c.miss) return `<span class="mc" data-k="${c.key}" title="原文缺字" role="img" aria-label="缺字" style="--i:${i}"><span class="h">\u3000</span><span class="rt" aria-hidden="true"></span></span>`;
+  if (!c.han) return `<span class="pc${DOT.test(c.ch) ? " mid" : ""}" aria-hidden="${/\s/.test(c.ch)}"><span class="h">${esc(c.ch)}</span></span>`;
   // ci：有注释的词（虚线下划线）；pz：平仄标注（平 / 仄 / 入）；blank：默写挖空（ok / bad：答对 / 答错）
   const cls = ["c", c.fix && !c.ov ? "fix" : "", c.ov ? "ov" : "", c.hl ? "hl" : "", c.ci ? "ci" : "", c.blank ? "blank" : "", c.blank && c.ans ? (c.ans === c.ch ? "ok" : "bad") : "", c.say ? "say" : ""].filter(Boolean).join(" ");
   const pz = c.pz ? `<i class="pz pz-${c.pz}" aria-hidden="true">${c.pz === "p" ? "—" : "|"}</i>` : "";
@@ -38,8 +55,9 @@ function cellHTML(c) {
  */
 export function renderPoem(root, poem, ann, view) {
   seq = 0;
-  const titleHTML = ann.title.map((cells) => cells.map(cellHTML).join("")).join("");
+  const titleHTML = ann.title.map((cells) => titleGroups(cells).map((g) => `<span class="tg">${g.map(cellHTML).join("")}</span>`).join("")).join("");
   // 作者名可点：更多这位诗人的诗
+  seq = Math.min(seq, 12);     // 超长标题不拖慢正文的墨晕出现（动画延迟按序号递增）
   const au = poem.author ? `<button class="meta-au" type="button" data-author="${esc(view.authorKey || poem.author)}" title="更多${esc(poem.author)}的诗" aria-haspopup="true">${esc(poem.author)}</button>` : "";
   const meta = [poem.dynasty ? esc(poem.dynasty) : "", au].filter(Boolean).join('<span class="sep">·</span>');
   const tags = [
@@ -70,7 +88,8 @@ export function renderPoem(root, poem, ann, view) {
   requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("fresh")));
 }
 
-// 自适应字号：横排按最长分句定宽，竖排按最长分句定高，田字格按格子定宽
+// 自适应字号：横排按最长分句定宽，竖排按最长分句定高，田字格按格子定宽。
+// 标题不参与正文字号：超长标题（如白居易「木莲树生巴峡山谷间……」）自己按均匀的几行换行，正文不被拖小
 export function fit(root, mode) {
   const body = root.querySelector(".poem-body");
   if (!body) return;
@@ -79,15 +98,18 @@ export function fit(root, mode) {
   const availW = card.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 4;
   const vw = window.innerWidth, vh = window.innerHeight;
   const mobile = vw <= 760;
-  const units = (cells, han, punct) => cells.reduce((s, el) => s + (el.matches("ruby.c") ? han : punct), 0);
+  const isHan = (el) => el.matches("ruby.c, .mc");
+  const units = (cells, han, punct) => cells.reduce((s, el) => s + (isHan(el) ? han : punct), 0);
   const clauses = [...root.querySelectorAll(".poem-body .clause")].map((c) => [...c.children]);
-  const titleCells = [...root.querySelectorAll(".poem-title > ruby, .poem-title > .pc")];
-  let size;
+  const titleCells = [...root.querySelectorAll(".poem-title .tg > *")];
+  // 标题长度（以正文字号为 1）：汉字格 1.38、标点 .72、间隔号 .5，再乘标题缩放 tsr
+  const titleUnits = (tsr) => titleCells.reduce((s, el) => s + (isHan(el) ? 1.38 : el.classList.contains("mid") ? .5 : .72), 0) * tsr;
+  let size, availH = 0;
 
   if (mode === "v") {
     const pref = mobile ? 30 : 42;
-    const maxLen = Math.max(1, ...clauses.map((c) => units(c, 1.38, 1.0)), units(titleCells, 1.38 * .82, .8) + 2);
-    const availH = Math.max(260, Math.min(vh * (mobile ? .6 : .62), 620));
+    const maxLen = Math.max(1, ...clauses.map((c) => units(c, 1.38, 1.0)));
+    availH = Math.max(260, Math.min(vh * (mobile ? .6 : .62), 620));
     size = Math.min(pref, availH / maxLen);
   } else if (mode === "g") {
     const pref = mobile ? 28 : 40;
@@ -95,7 +117,7 @@ export function fit(root, mode) {
     size = Math.min(pref, availW / (maxLen + .2));
   } else {
     const pref = mobile ? 40 : Math.min(48, Math.max(34, vw / 30));
-    const maxLen = Math.max(1, ...clauses.map((c) => units(c, 1.38, .72)), units(titleCells, 1.38 * .82, .72 * .82));
+    const maxLen = Math.max(1, ...clauses.map((c) => units(c, 1.38, .72)));
     size = Math.min(pref, availW / maxLen);
   }
   // 用户字号（设置里的 小/中/大/特大）：乘在自适应字号上。放大后一句放不下就在句内换行，不裁切
@@ -109,8 +131,6 @@ export function fit(root, mode) {
         : Math.max(1, ...clauses.map((c) => units(c, 1.38, .72)));
       size = Math.min(size, availW / (unit * 4 + .8));          // 每行至少放得下四个字
       wrap = size * longest > availW;
-      // 标题也可能放不下
-      if (!wrap && titleCells.length && size * units(titleCells, 1.38 * .82, .72 * .82) > availW) wrap = true;
     }
   }
   size = Math.max(16, Math.floor(size));
@@ -120,8 +140,24 @@ export function fit(root, mode) {
     // 句内换行时让各行字数均匀（7 字 → 4+3，5 字 → 3+2），标点跟着前一个字，不单独成行
     const g = mode === "g", cellW = g ? 1.5 : 1.38, tail = g ? 0 : .72;
     const per = Math.max(1, Math.floor((availW / size - tail) / cellW));
-    const n = Math.max(1, ...clauses.map((c) => (g ? c.length : c.filter((el) => el.matches("ruby.c")).length)));
+    const n = Math.max(1, ...clauses.map((c) => (g ? c.length : c.filter(isHan).length)));
     const rows = Math.ceil(n / per), even = Math.ceil(n / rows);
     root.style.setProperty("--wrapw", Math.ceil((even * cellW + tail) * size + 2) + "px");
   } else root.style.removeProperty("--wrapw");
+
+  // 标题：一行放得下就一行；放不下按均匀的几行换行（越长标题字越小一档）
+  const room = mode === "v" ? availH : availW - 8;
+  let tsr = .82, need = titleUnits(tsr) * size;
+  if (need > room * 2) { tsr = .68; need = titleUnits(tsr) * size; }
+  if (need > room * 3) { tsr = .58; need = titleUnits(tsr) * size; }
+  root.style.setProperty("--tsr", tsr);
+  if (titleCells.length && need > room) {
+    const cellW = 1.38 * tsr * size;
+    const total = need / cellW;                          // 折合成多少个汉字格
+    const maxPer = Math.max(1, Math.floor(room / cellW));
+    const rows = Math.ceil(total / maxPer);
+    const per = Math.min(maxPer, Math.ceil(total / rows) + .6);   // 多留半格给跟在字后面的标点
+    root.style.setProperty("--tw", Math.ceil(per * cellW + 2) + "px");
+    root.classList.add("tw");
+  } else { root.style.removeProperty("--tw"); root.classList.remove("tw"); }
 }

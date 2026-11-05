@@ -57,11 +57,11 @@
 :root[data-font="song"] .card { --han: "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif; }
 :root[data-font="kai"] .card { --han: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif; }
 :root[data-font="hei"] .card { --han: "Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
-/* 以下几种字库只收常用简体字，缺字（多为繁体）时退回宋体 */
-:root[data-font="xiaowei"] .card { --han: "ZCOOL XiaoWei", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="mashan"] .card { --han: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
-:root[data-font="kuaile"] .card { --han: "ZCOOL KuaiLe", "PingFang SC", "Microsoft YaHei", sans-serif; }
-:root[data-font="longcang"] .card { --han: "Long Cang", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+/* 以下几种字库只收常用简体字：缺字（多为繁体）时先用同类、带繁体的字体补（小薇→思源宋体，快乐→思源黑体，毛笔 / 行书→霞鹜文楷，fonts.js 会一并载入），不让一行里混进差得很远的系统字体 */
+:root[data-font="xiaowei"] .card { --han: "ZCOOL XiaoWei", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="mashan"] .card { --han: "Ma Shan Zheng", "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
+:root[data-font="kuaile"] .card { --han: "ZCOOL KuaiLe", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+:root[data-font="longcang"] .card { --han: "Long Cang", "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "STSong", "SimSun", serif; }
 
 /* ---------- 主题（设置 → 纸面）：只作用于中间的诗笺 .card（页面其余部分始终是宣纸默认样子；夜读例外，整页变暗）。只改颜色与纸纹，版式不变。纹理都是 CSS / 内联 SVG 自绘 ---------- */
 /* 素笺：白纸 */
@@ -331,7 +331,11 @@ kbd { font-family: var(--py); font-size: 12px; border: 1px solid var(--line-2); 
 .tagline, .tag-today, .tag-src, .tag-fh, .seal, .seal-img { font-style: normal; font-synthesis: none; transform: none; }
 /* 「今日」不跟随诗文字体：行书、毛笔这类字体的字形本身是斜的，标签固定用正楷的宋 / 仿宋 */
 .tag-today { font-family: "Zhuque Fangsong", "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", serif; }
-.poem-title { margin: 0; font-weight: 400; font-size: calc(var(--cs) * .82); line-height: 1; }
+.poem-title { --ts: calc(var(--cs) * var(--tsr, .82)); margin: 0 auto; font-weight: 400; font-size: var(--ts); line-height: 1;
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; row-gap: calc(var(--ts) * .28); max-inline-size: 100%; }
+/* 超长标题：fit() 算好每行的宽度 --tw，让几行长短均匀；组（字 + 后面的标点）之间才换行 */
+.poem.tw .poem-title { max-inline-size: var(--tw); }
+.poem-title .tg { display: inline-flex; white-space: nowrap; }
 .poem-sub { display: inline-block; vertical-align: bottom; margin-left: .3em; padding: 0 .35em; font-family: var(--han); font-size: max(13px, calc(var(--cs) * .3)); line-height: 1.6; color: var(--ink-3); border: 1px solid var(--line-2); border-radius: 3px; letter-spacing: .15em; text-indent: .15em; transform: translateY(-.35em); }
 .poem.m-v .poem-sub { margin: .3em 0 0; transform: none; }
 .poem-meta { margin: calc(var(--cs) * .32) 0 0; font-family: var(--han); font-size: max(15px, calc(var(--cs) * .38)); color: var(--ink-3); letter-spacing: .32em; text-indent: .32em; }
@@ -368,11 +372,23 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .pc .h { display: block; font-family: var(--han); font-size: var(--cs); line-height: 1.12; color: var(--ink-2); }
 .pc .h { text-align: left; inline-size: 100%; }
 .pc::after { content: ""; display: block; height: calc(var(--pys) * 1.5); }
-.poem-title ruby.c { inline-size: calc(var(--cs) * .82 * var(--cell)); }
-.poem-title ruby.c .h { font-size: calc(var(--cs) * .82); }
-.poem-title ruby.c rt { font-size: calc(var(--pys) * .9); }
-.poem-title .pc { inline-size: calc(var(--cs) * .82 * .72); }
-.poem-title .pc .h { font-size: calc(var(--cs) * .82); }
+.poem-title ruby.c, .poem-title .mc { inline-size: calc(var(--ts) * var(--cell)); }
+.poem-title ruby.c .h, .poem-title .mc .h { font-size: var(--ts); }
+.poem-title .mc .rt { font-size: calc(var(--pys) * .9 * var(--tsr, .82) / .82); }
+.poem-title ruby.c rt { font-size: calc(var(--pys) * .9 * var(--tsr, .82) / .82); }
+.poem-title .pc { inline-size: calc(var(--ts) * .72); }
+.poem-title .pc .h { font-size: var(--ts); }
+/* 间隔号「·」（清商怨·望西飞）：窄一点、居中，左右留白一样 */
+.pc.mid { inline-size: calc(var(--cs) * .5); }
+.poem-title .pc.mid { inline-size: calc(var(--ts) * .5); }
+.pc.mid .h { text-align: center; }
+
+/* 虚缺号 □（原文缺字）：与汉字同宽同高的空格子，淡墨虚线框，上面留出同样高的拼音位 */
+.mc { display: inline-flex; flex-direction: column-reverse; align-items: center; inline-size: calc(var(--cs) * var(--cell)); position: relative; cursor: help; }
+.mc .h { display: block; position: relative; font-family: var(--han); font-size: var(--cs); line-height: 1.12; color: var(--ink-3); }
+.mc .h::before { content: ""; position: absolute; inset: .1em .04em; border: 1px dashed currentColor; border-radius: 2px; opacity: .55;
+  background: repeating-linear-gradient(135deg, transparent 0 .16em, rgba(122,111,98,.07) .16em .2em); }
+.mc .rt { display: block; font-family: var(--py); font-size: var(--pys); line-height: 1.5; height: 1.5em; }
 
 /* 隐藏拼音：保留占位，版面不跳 */
 .poem.no-py rt { visibility: hidden; }
@@ -404,21 +420,24 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .poem.m-v .clause { display: flex; flex-direction: row; }
 .poem.m-v ruby.c rt { line-height: 1.5; height: auto; width: auto; text-orientation: sideways; padding-inline: 0; margin-left: calc(var(--cs) * .04); }
 .poem.m-v .pc::after { height: auto; width: calc(var(--pys) * 1.5); }
+.poem.m-v .mc .rt { height: auto; width: auto; line-height: 1.5; margin-left: calc(var(--cs) * .04); }
+.poem.m-v .mc .rt::before { content: "\00a0"; }
+.poem.m-v .poem-title { margin: 0; justify-content: flex-start; align-items: center; row-gap: calc(var(--ts) * .55); }   /* 竖排里 row-gap 是列与列之间 */
 .poem.m-v .pc .h { text-align: start; }
 /* 竖排从左到右：列从左往右排，拼音仍在字的右侧 */
 .poem.m-v.v-lr .poem-scroll { writing-mode: vertical-lr; }
-.poem.m-v.v-lr ruby.c, .poem.m-v.v-lr .pc { flex-direction: column; }
+.poem.m-v.v-lr ruby.c, .poem.m-v.v-lr .pc, .poem.m-v.v-lr .mc { flex-direction: column; }
 .poem.m-v ruby.c.hl::after { left: auto; right: auto; bottom: auto; top: 50%; transform: translateY(-50%); }
 
 /* ---------- 田字格 ---------- */
 .poem.m-g .poem-body { gap: calc(var(--cs) * var(--lg) * 1.78); align-items: center; }
 .poem.m-g .line { flex-direction: column; align-items: center; row-gap: calc(var(--cs) * var(--lg) * 1.78); }
 .poem.m-g .clause { display: flex; }
-.poem.m-g .poem-body ruby.c, .poem.m-g .poem-body .pc {
+.poem.m-g .poem-body ruby.c, .poem.m-g .poem-body .pc, .poem.m-g .poem-body .mc {
   inline-size: calc(var(--cs) * 1.5); border-radius: 0; margin-left: -1px;
 }
 .poem.m-g .poem-body .clause > :first-child { margin-left: 0; }
-.poem.m-g .poem-body ruby.c rt, .poem.m-g .poem-body .pc::after {
+.poem.m-g .poem-body ruby.c rt, .poem.m-g .poem-body .pc::after, .poem.m-g .poem-body .mc .rt {
   /* 四线三格 */
   height: calc(var(--pys) * 1.91); width: 100%; line-height: calc(var(--pys) * 1.91); font-size: calc(var(--pys) * .985);
   background:
@@ -431,7 +450,7 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
   display: block;
 }
 .poem.m-g .poem-body ruby.c rt { line-height: calc(var(--pys) * 2.03); }
-.poem.m-g .poem-body ruby.c .h, .poem.m-g .poem-body .pc .h {
+.poem.m-g .poem-body ruby.c .h, .poem.m-g .poem-body .pc .h, .poem.m-g .poem-body .mc .h {
   inline-size: 100%; block-size: calc(var(--cs) * 1.5); line-height: calc(var(--cs) * 1.5); text-align: center;
   font-size: calc(var(--cs) * 1.08);
   border: 1px solid var(--grid); border-top: 0; margin-top: calc(var(--cs) * .12);
@@ -442,7 +461,7 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
   background-size: 8px 100%, 100% 8px;
 }
 /* 虚线十字：用重复渐变画 */
-.poem.m-g .poem-body ruby.c .h, .poem.m-g .poem-body .pc .h {
+.poem.m-g .poem-body ruby.c .h, .poem.m-g .poem-body .pc .h, .poem.m-g .poem-body .mc .h {
   background:
     repeating-linear-gradient(180deg, rgba(215,154,144,.7) 0 4px, transparent 4px 8px) 50% 0 / 1px 100% no-repeat,
     repeating-linear-gradient(90deg, rgba(215,154,144,.7) 0 4px, transparent 4px 8px) 0 50% / 100% 1px no-repeat;
@@ -451,6 +470,8 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .poem.m-g .poem-body .pc::after { background: none; border-color: transparent; }
 .poem.m-g .poem-body .pc .h { text-align: left; padding-left: .12em; line-height: calc(var(--cs) * 1.75); color: var(--ink-2); }
 .poem.m-g .poem-body ruby.c:hover { background: none; }
+/* 田字格里的缺字格：照常画格子，里面的虚线框缩小一圈 */
+.poem.m-g .poem-body .mc .h::before { inset: 16%; }
 .poem.m-g .poem-body ruby.c:hover .h { background-color: var(--zhu-soft); }
 .poem.m-g.no-py .poem-body rt { visibility: visible; color: transparent; }
 
@@ -683,7 +704,7 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .pz-legend .pz { position: static; transform: none; font-size: 14px; }
 .pz-legend small { border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; font-size: 11px; }
 /* 平仄：字下方留出一行小空位放记号，不压到下一句的拼音 */
-.poem:has(.poem-body .pz) .poem-body ruby.c, .poem:has(.poem-body .pz) .poem-body .pc { padding-bottom: calc(var(--cs) * .34); }
+.poem:has(.poem-body .pz) .poem-body ruby.c, .poem:has(.poem-body .pz) .poem-body .pc, .poem:has(.poem-body .pz) .poem-body .mc { padding-bottom: calc(var(--cs) * .34); }
 ruby.c .pz { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); font-style: normal; font-family: var(--ui); font-size: max(10px, calc(var(--cs) * .26)); line-height: 1; color: var(--ink-3); pointer-events: none; }
 ruby.c .pz-z { color: var(--zhu); font-weight: 600; }
 ruby.c .pz-r { color: #c07a2a; font-weight: 600; }
@@ -772,6 +793,8 @@ ruby.c.say .h { color: var(--zhu); }
   .line.veiled .h, .line.veiled rt { filter: none; opacity: 1; }
   ruby.c, ruby.c.on { background: none !important; box-shadow: none !important; }
   ruby.c rt { color: #444; }
+  .mc .h { color: #999; }
+  .mc .h::before { background: none; }
   .poem.m-v .poem-scroll { overflow: visible; width: 100%; max-width: 100%; }
   /* 长诗竖排打印：列排满一页宽就折到下面一栏，不会被纸边裁掉 */
   .poem.m-v .poem-body { flex: 1 1 0; min-width: 0; flex-wrap: wrap; align-content: flex-start; row-gap: calc(var(--cs) * .9); }
@@ -995,6 +1018,8 @@ button.mv-poem:hover { border-color: var(--zhu); color: var(--zhu); }
   .pl-line { display: flex; flex-wrap: wrap; justify-content: center; margin: 0 0 2mm; font-family: var(--han); font-size: 17pt; color: #1f1b16; }
   .pl-c { display: inline-flex; flex-direction: column; align-items: center; width: 1.7em; }
   .pl-c.pl-p { width: .8em; }
+  .pl-c.pl-m b { color: transparent; position: relative; }
+  .pl-c.pl-m b::before { content: ""; position: absolute; inset: .14em .08em; border: 1px dashed #999; }
   .pl-c i { font-style: normal; font-family: var(--py); font-size: 8pt; line-height: 1.3; height: 1.3em; color: #555; white-space: nowrap; }
   .pl-c b { font-weight: 400; line-height: 1.25; }
   body.print-nopy .pl-c i { visibility: hidden; }

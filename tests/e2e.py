@@ -23,7 +23,7 @@ calls, errors, results = [], [], {}
 # 主诗库 poetry-api.snowtraces.com/v1（搜索至少 2 个字、/authors 名字→id、游标分页、随机直接 {data}）；
 # 备用 poetry.palemoky.com/api（随机 / 单字 / 3 字以上搜索）。MODE["api"] = "down" 时主诗库连不上，应自动改用备用
 MODE = {"api": "up"}
-# 分段运行：YINSHI_PART=v7（纸面/字体只作用于诗笺）、base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）、v4、v5、v6（足迹地图、学习列表）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
+# 分段运行：YINSHI_PART=v7（纸面/字体只作用于诗笺）、base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）、v4、v5、v6（足迹地图、学习列表）、v8（缺字格、长标题、繁体字形）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
 PART = os.environ.get("YINSHI_PART", "all")
 
 def mock(route):
@@ -546,7 +546,7 @@ with sync_playwright() as p:
         pg.click("#btnDictate"); settle(pg, 900)
         nb = pg.locator("#poemView ruby.blank").count()
         DAILY_FX = {d["t"]: d for d in json.load(open(os.path.join(SITE, "poem", "daily-poems.json"), encoding="utf-8"))["poems"]}
-        tt = pg.eval_on_selector_all(".poem-title > ruby .h", "e => e.map(x => x.textContent).join('')")
+        tt = pg.eval_on_selector_all(".poem-title ruby .h", "e => e.map(x => x.textContent).join('')")
         cur_title = next(t for t in DAILY_FX if t.startswith(tt))
         results["v5_dict_blanks"] = nb
         pg.screenshot(path=f"{OUT}/94-dictation.png")
@@ -1085,6 +1085,170 @@ with sync_playwright() as p:
                 m.screenshot(path=f"{YE2}/ye2-mobile-map.png")
             m.context.close()
         results["v7"] = V7
+
+    if PART in ("all", "v8", "v8m"):
+        # ---- 虚缺号 □ 占满一个字格、标题里的「·」、超长标题换行、繁体字形来自同一字体 ----
+        V8 = {}
+        def chk8(name, ok, val=""):
+            V8[name] = ("ok" if ok else "FAIL") + (f" {val}" if val != "" else "")
+        V8OUT = os.environ.get("YINSHI_V8_OUT", OUT); os.makedirs(V8OUT, exist_ok=True)
+        def open_q(page, q, mobile=False):
+            if mobile:
+                page.click("#dSearch"); page.fill("#q2", q); page.press("#q2", "Enter")
+            else:
+                page.fill("#q", q); page.press("#q", "Enter")
+            page.wait_for_selector("#results .res"); settle(page, 400)
+            page.click("#results .res >> nth=0"); settle(page, 1800)
+        def set_lang(page, l):
+            page.click("#btnSettings"); settle(page, 250); page.click(f'[data-lang="{l}"]'); settle(page, 2000); page.keyboard.press("Escape"); settle(page, 500)
+        def set_mode(page, mode, mobile=False):
+            if mobile:
+                for _ in range(4):
+                    if page.locator(f".poem.m-{mode}").count(): break
+                    page.click("#dMode"); settle(page, 900)
+            else: page.click(f'#modeSeg [data-mode="{mode}"]')
+            settle(page, 1500)
+        # 缺字格与普通字格：同宽、同高、同一行顶端对齐、拼音位同高
+        MISS_PROBE = """() => { const R = (e) => e.getBoundingClientRect();
+          const mc = [...document.querySelectorAll('.poem-body .mc')], c = [...document.querySelectorAll('.poem-body ruby.c')];
+          if (!mc.length || !c.length) return { n: mc.length };
+          const v = !!document.querySelector('.poem.m-v');
+          const a = R(c[0]), ah = R(c[0].querySelector('.h')), ar = R(c[0].querySelector('rt'));
+          let bad = [];
+          mc.forEach((m, i) => { const r = R(m), h = R(m.querySelector('.h')), p = R(m.querySelector('.rt'));
+            if (Math.abs(r.width - a.width) > 1.5 || Math.abs(r.height - a.height) > 1.5) bad.push('box' + i + ':' + r.width.toFixed(1) + 'x' + r.height.toFixed(1) + ' vs ' + a.width.toFixed(1) + 'x' + a.height.toFixed(1));
+            if (Math.abs(h.height - ah.height) > 1.5 || Math.abs(h.width - ah.width) > 1.5) bad.push('h' + i);
+            if (!v && Math.abs(p.height - ar.height) > 1.5) bad.push('py' + i);
+            // 同一行里的相邻普通字：顶端（竖排为左右）对齐
+            const sib = m.parentElement.querySelector('ruby.c');
+            if (sib) { const s = R(sib); if (v ? Math.abs(s.left - r.left) > 1.5 : Math.abs(s.top - r.top) > 1.5) bad.push('align' + i); }
+          });
+          return { n: mc.length, bad: bad.slice(0, 6), title: mc[0].title, glyph: mc[0].textContent.trim() }; }"""
+        DOT_PROBE = """() => { const d = document.querySelector('.poem-title .pc.mid'); if (!d) return null;
+          const all = [...document.querySelectorAll('.poem-title ruby.c, .poem-title .pc, .poem-title .mc')], k = all.indexOf(d);
+          const prev = all[k - 1], next = all[k + 1];
+          const rg = document.createRange(); rg.selectNodeContents(d.querySelector('.h')); const g = rg.getBoundingClientRect();
+          const gh = (e) => { const r = document.createRange(); r.selectNodeContents(e.querySelector('.h')); return r.getBoundingClientRect(); };
+          const p = gh(prev), n = gh(next), v = !!document.querySelector('.poem.m-v');
+          const before = v ? g.top - p.bottom : g.left - p.right, after = v ? n.top - g.bottom : n.left - g.right;
+          return { before: +before.toFixed(1), after: +after.toFixed(1), w: +(v ? d.getBoundingClientRect().height : d.getBoundingClientRect().width).toFixed(1) }; }"""
+        TITLE_PROBE = """() => { const t = document.querySelector('.poem-title'), card = document.querySelector('.card').getBoundingClientRect();
+          const cells = [...t.querySelectorAll('ruby.c, .pc, .mc')].filter((c) => c.textContent.trim()); const v = !!document.querySelector('.poem.m-v');
+          const rows = {}; let clip = 0, pyOff = 0;
+          cells.forEach((c) => { const r = c.getBoundingClientRect(); const k = Math.round(v ? r.left : r.top); rows[k] = (rows[k] || 0) + 1;
+            if (r.right > card.right - 8 || r.left < card.left + 8 || r.bottom > card.bottom) clip++;
+            const rt = c.querySelector('rt'), h = c.querySelector('.h');
+            if (rt && !v) { const a = rt.getBoundingClientRect(), b = h.getBoundingClientRect(); if (a.bottom > b.top + 2 || Math.abs((a.left + a.right) / 2 - (b.left + b.right) / 2) > 2) pyOff++; } });
+          const counts = Object.keys(rows).sort((a, b) => a - b).map((k) => rows[k]);
+          return { rows: counts, clip, pyOff, cs: parseFloat(getComputedStyle(document.getElementById('poemView')).getPropertyValue('--cs')) }; }"""
+        # 繁体字由哪种字体画出：在已加载的 FontFace 里找 unicode-range 覆盖这个字的那一份
+        FACE_PROBE = """(fam) => { const inR = (ur, cp) => ur.split(',').some((p) => { const m = p.trim().replace(/^U\\+/i, '').split('-'); const a = parseInt(m[0], 16), b = m[1] ? parseInt(m[1], 16) : a; return cp >= a && cp <= b; });
+          const faces = [...document.fonts].filter((f) => f.status === 'loaded');
+          const chars = [...new Set(([...document.querySelectorAll('.poem .h')].map((h) => h.textContent).join('') + document.querySelector('.poem-meta').textContent).replace(/[\\s，。、；：！？·□]/g, ''))];
+          const fams = (fam || '').split('|');
+          const miss = chars.filter((ch) => { const cp = ch.codePointAt(0);
+            for (const fm of fams) { const own = faces.filter((f) => f.family.replace(/"/g, '') === fm && inR(f.unicodeRange, cp)); if (own.length) return false;
+              const any = [...document.fonts].filter((f) => f.family.replace(/"/g, '') === fm && inR(f.unicodeRange, cp)); if (any.length) return true; }
+            return true; });
+          return { chars: chars.length, miss: miss.join('') }; }"""
+        if PART in ("all", "v8"):
+            pg = new_page(b, 1440, 1000)
+            pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
+            open_q(pg, "望西飞")
+            for mode in ("h", "v", "g"):
+                set_mode(pg, mode)
+                r = pg.evaluate(MISS_PROBE)
+                chk8(f"miss_cells_{mode}", r.get("n") == 15 and not r.get("bad"), r)
+                chk8(f"miss_no_overlap_{mode}", not overlaps(pg), overlaps(pg))
+                pg.screenshot(path=f"{V8OUT}/after-desktop-qingshangyuan-hans-{mode}.png")
+            chk8("miss_hint", MISS_PROBE and pg.evaluate(MISS_PROBE).get("title") == "原文缺字")
+            set_mode(pg, "h")
+            d = pg.evaluate(DOT_PROBE)
+            chk8("title_dot_centered", d and abs(d["before"] - d["after"]) <= 3 and d["w"] < 30, d)
+            # 遮字：缺字格也跟着整句遮住；默写：从不挖缺字格
+            pg.click("#togVeil"); settle(pg, 700)
+            chk8("veil_miss", pg.evaluate("[...document.querySelectorAll('.line.veiled .mc .h')].every(h => parseFloat(getComputedStyle(h).opacity) < .5) && document.querySelectorAll('.line.veiled .mc').length > 0"))
+            pg.screenshot(path=f"{V8OUT}/after-desktop-qingshangyuan-veil.png")
+            pg.click("#togVeil"); settle(pg, 500)
+            for _ in range(3):
+                pg.click("#btnDictate"); settle(pg, 600)
+                ok = pg.evaluate("document.querySelectorAll('.poem-body .blank').length > 0 && document.querySelectorAll('.poem-body .mc').length === 15 && !document.querySelector('.mc.blank')")
+                chk8("dictation_skips_miss", ok)
+                if not ok: break
+                pg.click("#btnDictate"); settle(pg, 400)
+            txt = pg.evaluate("document.querySelector('.poem-body').innerText")
+            chk8("text_has_no_raw_box", "□" not in txt, txt[:40])
+            with pg.expect_download() as dl: pg.click("#btnImage")
+            dl.value.save_as(f"{V8OUT}/after-export-qingshangyuan-h.png"); settle(pg, 300)
+            # 繁体：每个字都由朱雀仿宋画出（不混进回退字体）
+            set_lang(pg, "hant")
+            chk8("hant_title", "清商怨·望西飛" in pg.inner_text(".poem-title").replace("\n", "").replace(" ", "") or "望西飛" in pg.evaluate("[...document.querySelectorAll('.poem-title .h')].map(h => h.textContent).join('')"))
+            pg.evaluate("document.fonts.ready"); settle(pg, 1200)
+            f = pg.evaluate(FACE_PROBE, "Zhuque Fangsong")
+            chk8("hant_glyphs_zhuque", f["chars"] > 20 and not f["miss"], f)
+            for mode in ("h", "v", "g"):
+                set_mode(pg, mode)
+                chk8(f"hant_miss_cells_{mode}", not pg.evaluate(MISS_PROBE).get("bad"))
+                pg.screenshot(path=f"{V8OUT}/after-desktop-qingshangyuan-hant-{mode}.png")
+            set_mode(pg, "h")
+            set_lang(pg, "hans")
+            # 张弼《渡江》：□□ 夹在句中，整行与上下对齐
+            open_q(pg, "洪涛汹汹")
+            r = pg.evaluate("""() => { const ls = [...document.querySelectorAll('.poem-body .line')].map(l => { const r = l.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; }); return ls; }""")
+            chk8("dujiang_lines_aligned", len(set(x[0] for x in r)) == 1 and len(set(x[1] for x in r)) == 1, r)
+            pg.screenshot(path=f"{V8OUT}/after-desktop-dujiang.png")
+            # 超长标题：标题自己换行，正文字号不被拖小
+            open_q(pg, "木莲树")
+            for mode in ("h", "v"):
+                set_mode(pg, mode)
+                t = pg.evaluate(TITLE_PROBE)
+                ok = t["clip"] == 0 and t["pyOff"] == 0 and len(t["rows"]) >= 2 and t["cs"] >= 30 and min(t["rows"]) >= max(t["rows"]) * .5
+                chk8(f"long_title_{mode}", ok, t)
+                pg.screenshot(path=f"{V8OUT}/after-desktop-longtitle-{mode}.png")
+                with pg.expect_download() as dl: pg.click("#btnImage")
+                dl.value.save_as(f"{V8OUT}/after-export-longtitle-{mode}.png"); settle(pg, 300)
+            set_mode(pg, "h")
+            pg.context.close()
+        if PART in ("all", "v8m"):
+            pg = new_page(b, 1440, 1000)
+            pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
+            open_q(pg, "望西飞")
+            set_lang(pg, "hant")
+            # 其他字体：缺繁体字形的展示字体按同类字体补字
+            for key, fams in (("song", "Noto Serif SC"), ("kai", "LXGW WenKai"), ("hei", "Noto Sans SC"), ("xiaowei", "ZCOOL XiaoWei|Noto Serif SC"),
+                              ("mashan", "Ma Shan Zheng|LXGW WenKai"), ("kuaile", "ZCOOL KuaiLe|Noto Sans SC"), ("longcang", "Long Cang|LXGW WenKai")):
+                pg.click("#btnSettings"); settle(pg, 250); pg.click(f'[data-font="{key}"]'); settle(pg, 2200); pg.keyboard.press("Escape"); settle(pg, 400)
+                pg.evaluate("document.fonts.ready"); settle(pg, 600)
+                f = pg.evaluate(FACE_PROBE, fams)
+                chk8(f"hant_glyphs_{key}", not f["miss"], f)
+                if key in ("xiaowei", "longcang"): pg.screenshot(path=f"{V8OUT}/after-desktop-hant-font-{key}.png")
+            pg.click("#btnSettings"); settle(pg, 250); pg.click('[data-font="fang"]'); settle(pg, 1200); pg.keyboard.press("Escape"); settle(pg, 300)
+            pg.context.close()
+            m = new_page(b, 390, 844, mobile=True)
+            m.goto(BASE); m.wait_for_selector(".poem-body ruby.c"); settle(m, 1500)
+            open_q(m, "望西飞", True)
+            for mode in ("h", "v", "g"):
+                set_mode(m, mode, True)
+                r = m.evaluate(MISS_PROBE); chk8(f"m_miss_cells_{mode}", r.get("n") == 15 and not r.get("bad"), r)
+                ov = [x for x in overlaps(m) if not (mode == "v" and x.startswith("clip"))]   # 竖排长词本来就横向滚动
+                chk8(f"m_no_overlap_{mode}", not ov, ov)
+                m.screenshot(path=f"{V8OUT}/after-mobile-qingshangyuan-hans-{mode}.png")
+            set_mode(m, "h", True)
+            set_lang(m, "hant")
+            f = m.evaluate(FACE_PROBE, "Zhuque Fangsong"); chk8("m_hant_glyphs_zhuque", not f["miss"], f)
+            m.screenshot(path=f"{V8OUT}/after-mobile-qingshangyuan-hant-h.png")
+            set_mode(m, "g", True); m.screenshot(path=f"{V8OUT}/after-mobile-qingshangyuan-hant-g.png")
+            set_mode(m, "h", True)
+            set_lang(m, "hans")
+            open_q(m, "木莲树", True)
+            t = m.evaluate(TITLE_PROBE)
+            chk8("m_long_title_h", t["clip"] == 0 and t["pyOff"] == 0 and t["cs"] >= 24 and min(t["rows"]) >= max(t["rows"]) * .5, t)
+            m.screenshot(path=f"{V8OUT}/after-mobile-longtitle-h.png", full_page=True)
+            set_mode(m, "v", True)
+            t = m.evaluate(TITLE_PROBE); chk8("m_long_title_v", t["clip"] == 0 and t["cs"] >= 20, t)
+            m.screenshot(path=f"{V8OUT}/after-mobile-longtitle-v.png", full_page=True)
+            m.context.close()
+        results["v8"] = V8
     b.close()
 
 results["api_calls"] = calls
@@ -1094,3 +1258,5 @@ bad6 = [k for k, v in results.get("v6", {}).items() if v.startswith("FAIL")]
 if bad6: print("V6 FAIL:", bad6); sys.exit(1)
 bad7 = [k for k, v in results.get("v7", {}).items() if v.startswith("FAIL")]
 if bad7: print("V7 FAIL:", bad7); sys.exit(1)
+bad8 = [k for k, v in results.get("v8", {}).items() if v.startswith("FAIL")]
+if bad8: print("V8 FAIL:", bad8); sys.exit(1)
