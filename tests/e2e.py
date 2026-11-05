@@ -23,6 +23,8 @@ calls, errors, results = [], [], {}
 # 主诗库 poetry-api.snowtraces.com/v1（搜索至少 2 个字、/authors 名字→id、游标分页、随机直接 {data}）；
 # 备用 poetry.palemoky.com/api（随机 / 单字 / 3 字以上搜索）。MODE["api"] = "down" 时主诗库连不上，应自动改用备用
 MODE = {"api": "up"}
+# 随机队列：测试里按顺序指定接下来几次「随机」/「飞花令」抽到哪首（用完了回到默认 fixture）
+RANDQ = {"st": [], "pm": []}
 # 分段运行：YINSHI_PART=v7（纸面/字体只作用于诗笺）、base（基本验收）、v3（诗人搜索/筛选、备用实例、设置按钮、简繁）、v4、v5、v6（足迹地图、学习列表）、v8（缺字格、长标题、繁体字形）或 visual（字体、长诗导出、竖排方向、字号）；默认全部
 PART = os.environ.get("YINSHI_PART", "all")
 
@@ -44,7 +46,8 @@ def mock(route):
                 return route.fulfill(status=404, headers=H, body=json.dumps({"error": {"code": "NOT_FOUND", "message": "author not found"}}))
             body = {"data": pages[page - 1] if page <= len(pages) else [], "pagination": {"page": page, "page_size": 20, "total_pages": len(pages)}}
     elif u.path.endswith("/poems/random"):
-        if q.get("char"): body = {"data": FX.get("random_char_" + q["char"][0])}
+        if RANDQ["pm"]: body = {"data": RANDQ["pm"].pop(0)}
+        elif q.get("char"): body = {"data": FX.get("random_char_" + q["char"][0])}
         elif q.get("author"): body = {"data": FX.get("random_author_" + q["author"][0])}
         else: body = {"data": FX["random_default"]}
     elif u.path.endswith("/dynasties"): body = {"data": FX["dynasties"]}
@@ -76,6 +79,7 @@ def mock_st(route):
         i = int(q.get("cursor", ["c1"])[0][1:]) - 1
         return ok([st_item(x) for x in (pages[i] if i < len(pages) else [])], f"c{i + 2}" if i + 1 < len(pages) else None)
     if p == "/works/random":
+        if RANDQ["st"]: return ok(st_item(RANDQ["st"].pop(0)))
         aid = q.get("author_id", [""])[0]
         if aid:
             poem = FX.get("random_author_" + aid[2:])
@@ -1151,6 +1155,26 @@ with sync_playwright() as p:
               const any = [...document.fonts].filter((f) => f.family.replace(/"/g, '') === fm && inR(f.unicodeRange, cp)); if (any.length) return true; }
             return true; });
           return { chars: chars.length, miss: miss.join('') }; }"""
+        # 任意两个字格（含缺字格、标点）不重叠：缺字格在竖排里不能压到旁边的字和拼音
+        OVERLAP_ALL = """() => { const bad = [];
+          document.querySelectorAll('.poem-body .line').forEach((l) => {
+            const cells = [...l.querySelectorAll('ruby.c, .pc, .mc')].filter((c) => c.textContent.trim() || c.classList.contains('mc'));
+            const rs = cells.map((c) => c.getBoundingClientRect());
+            for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+              const a = rs[i], b = rs[j];
+              const ix = Math.min(a.right, b.right) - Math.max(a.left, b.left), iy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+              if (ix > 2 && iy > 2) bad.push((cells[i].textContent.trim() || '□') + '/' + (cells[j].textContent.trim() || '□'));
+            }
+            // 缺字格的方框留在自己的格子里
+            l.querySelectorAll('.mc').forEach((m) => { const r = m.getBoundingClientRect(), h = m.querySelector('.h').getBoundingClientRect();
+              if (h.left < r.left - 1 || h.right > r.right + 1 || h.top < r.top - 1 || h.bottom > r.bottom + 1) bad.push('mc-out'); });
+          });
+          return bad.slice(0, 8); }"""
+        MISS_STYLE = """() => { const m = document.querySelector('.poem-body .mc'), bl = document.querySelector('.poem-body ruby.c.blank');
+          const mb = getComputedStyle(m.querySelector('.h'), '::before'), ma = getComputedStyle(m.querySelector('.h'), '::after');
+          return { mcBorder: mb.borderTopStyle, mcBg: mb.backgroundImage.slice(0, 40), mcLabel: ma.content, mcCursor: getComputedStyle(m).cursor,
+            blanks: document.querySelectorAll('.poem-body ruby.c.blank').length, blankBorder: bl ? getComputedStyle(bl, '::before').borderTopStyle : '',
+            mc: document.querySelectorAll('.poem-body .mc').length, mcBlank: document.querySelectorAll('.poem-body .mc.blank, .poem-body .mc .blank').length }; }"""
         if PART in ("all", "v8"):
             pg = new_page(b, 1440, 1000)
             pg.goto(BASE); pg.wait_for_selector(".poem-body ruby.c"); settle(pg, 1500)
@@ -1208,6 +1232,52 @@ with sync_playwright() as p:
                 with pg.expect_download() as dl: pg.click("#btnImage")
                 dl.value.save_as(f"{V8OUT}/after-export-longtitle-{mode}.png"); settle(pg, 300)
             set_mode(pg, "h")
+            # ---- 丘崇《洞仙歌·其三元宵词》：句首连着几个 □（用户在线上随机到的那首），三种版式、简繁都不重叠 ----
+            VFX = os.environ.get("YINSHI_VFIX_OUT", V8OUT); os.makedirs(VFX, exist_ok=True)
+            open_q(pg, "其三元宵词")
+            for lang in ("hans", "hant"):
+                if lang == "hant": set_lang(pg, "hant")
+                for mode in ("h", "v", "g"):
+                    set_mode(pg, mode)
+                    r = pg.evaluate(MISS_PROBE)
+                    chk8(f"qiu_miss_cells_{lang}_{mode}", r.get("n") == 6 and not r.get("bad"), r)
+                    ov = pg.evaluate(OVERLAP_ALL)
+                    chk8(f"qiu_no_overlap_{lang}_{mode}", not ov, ov)
+                    pg.screenshot(path=f"{VFX}/vfix-after-desktop-{lang}-{mode}.png")
+            set_mode(pg, "h"); set_lang(pg, "hans")
+            # 缺字格和默写空格长得不一样：缺字格细实线 + 斜线 + 小「缺」字、不能点；默写空格是虚线框
+            st = pg.evaluate(MISS_STYLE)
+            chk8("miss_looks_distinct", st["mcBorder"] == "solid" and st["mcLabel"] == '"缺"' and st["mcCursor"] == "default" and "repeating-linear-gradient" in st["mcBg"], st)
+            pg.click("#btnDictate"); settle(pg, 700)
+            st = pg.evaluate(MISS_STYLE)
+            chk8("dictation_blank_vs_miss", st["blanks"] > 0 and st["blankBorder"] == "dashed" and st["mcBorder"] == "solid" and st["mcBlank"] == 0 and st["mc"] == 6, st)
+            pg.click(".poem-body .mc >> nth=0", force=True); settle(pg, 400)
+            chk8("miss_click_no_popover", pg.evaluate("!document.querySelector('.pop:not([hidden])') || !document.querySelector('.dict-opts')"))
+            pg.screenshot(path=f"{VFX}/vfix-after-desktop-dictation.png")
+            pg.click("#btnDictate"); settle(pg, 400)
+            # 「随机」跳过有缺字的诗：先抽到洞仙歌（有 □），应自动换成下一首
+            RANDQ["st"][:] = [FX["search"]["其三元宵词"][0], FX["random_default"]]
+            pg.click("#btnRandom"); settle(pg, 2400)
+            t = pg.evaluate("[...document.querySelectorAll('.poem-title .h')].map(h => h.textContent).join('')")
+            chk8("random_skips_miss", "静夜思" in t and pg.locator(".poem-body .mc").count() == 0 and not RANDQ["st"], t)
+            # 每次都抽到有缺字的：重试几次后仍给一首（第一首），各种占位写法都认成缺字格
+            RANDQ["st"][:] = [FX["random_miss_variants"]] * 6
+            pg.click("#btnRandom"); settle(pg, 2600)
+            r = pg.evaluate("""() => ({ t: [...document.querySelectorAll('.poem-title .h')].map(h => h.textContent).join(''), mc: document.querySelectorAll('.poem-body .mc').length,
+              raw: [...document.querySelectorAll('.poem-body .pc .h')].map(h => h.textContent).filter(x => !/[，。、]/.test(x)).join('|') })""")
+            left = len(RANDQ["st"]); RANDQ["st"][:] = []
+            chk8("random_all_miss_still_shows", r["t"] == "缺字测试" and left <= 4, (r["t"], left))
+            chk8("miss_variants_detected", r["mc"] == 9 and r["raw"] == "", r)
+            chk8("miss_variants_no_overlap", not pg.evaluate(OVERLAP_ALL), pg.evaluate(OVERLAP_ALL))
+            pg.screenshot(path=f"{VFX}/vfix-after-desktop-variants.png")
+            # 飞花令也跳过有缺字的诗
+            RANDQ["pm"][:] = [FX["random_char_春_miss"], FX["random_char_春"]]
+            pg.click("#btnFeihua"); pg.fill(".fh-input", "春"); pg.press(".fh-input", "Enter"); settle(pg, 2600)
+            t = pg.evaluate("[...document.querySelectorAll('.poem-title .h')].map(h => h.textContent).join('')")
+            chk8("feihua_skips_miss", t != "春缺" and pg.locator(".poem-body .mc").count() == 0 and not RANDQ["pm"], t)
+            RANDQ["pm"][:] = []
+            # 课本 72 首（今日一诗的来源）本来就没有缺字
+            chk8("daily_has_no_miss", pg.evaluate("fetch('poem/daily-poems.json').then(r => r.ok ? r.text() : '').then(t => t && !/[\u25A0-\u25A2\u25AB\u25AF\u25CB\u25EF\u25FB-\u25FD\u2395\u2610\u2B1A\u2B1C\uFFFD]/.test(t))"))
             pg.context.close()
         if PART in ("all", "v8m"):
             pg = new_page(b, 1440, 1000)
@@ -1234,6 +1304,16 @@ with sync_playwright() as p:
                 chk8(f"m_no_overlap_{mode}", not ov, ov)
                 m.screenshot(path=f"{V8OUT}/after-mobile-qingshangyuan-hans-{mode}.png")
             set_mode(m, "h", True)
+            # 手机：丘崇《洞仙歌》三种版式
+            VFX = os.environ.get("YINSHI_VFIX_OUT", V8OUT); os.makedirs(VFX, exist_ok=True)
+            open_q(m, "其三元宵词", True)
+            for mode in ("h", "v", "g"):
+                set_mode(m, mode, True)
+                r = m.evaluate(MISS_PROBE); chk8(f"m_qiu_miss_cells_{mode}", r.get("n") == 6 and not r.get("bad"), r)
+                ov = m.evaluate(OVERLAP_ALL); chk8(f"m_qiu_no_overlap_{mode}", not ov, ov)
+                m.screenshot(path=f"{VFX}/vfix-after-mobile-{mode}.png")
+            set_mode(m, "h", True)
+            open_q(m, "望西飞", True)
             set_lang(m, "hant")
             f = m.evaluate(FACE_PROBE, "Zhuque Fangsong"); chk8("m_hant_glyphs_zhuque", not f["miss"], f)
             m.screenshot(path=f"{V8OUT}/after-mobile-qingshangyuan-hant-h.png")

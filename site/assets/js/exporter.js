@@ -173,11 +173,17 @@ async function paint(card, bg, extras = []) {
     const s = getComputedStyle(el);
     if (+s.opacity === 0) return;
     if (el.parentElement.classList.contains("mc")) {
-      // 缺字格：画和屏幕上一样的淡墨虚线框
+      // 缺字格：画和屏幕上一样的细线方框 + 淡墨斜线 + 小「缺」字（和默写空格的虚线框区分开）
       const b = getComputedStyle(el, "::before");
       const t = parseFloat(b.top) || 0, l = parseFloat(b.left) || 0, rr = parseFloat(b.right) || 0, bb = parseFloat(b.bottom) || 0;
-      ctx.save(); ctx.strokeStyle = s.color; ctx.globalAlpha = .55; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-      ctx.strokeRect(X(r) + l + .5, Y(r) + t + .5, r.width - l - rr - 1, r.height - t - bb - 1); ctx.restore();
+      const x0 = X(r) + l, y0 = Y(r) + t, w = r.width - l - rr, h = r.height - t - bb, step = Math.max(4, parseFloat(s.fontSize) * .15);
+      ctx.save(); ctx.strokeStyle = s.color; ctx.globalAlpha = .3; ctx.lineWidth = 1;
+      ctx.strokeRect(x0 + .5, y0 + .5, w - 1, h - 1);
+      ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip(); ctx.beginPath();
+      for (let k = -h; k < w; k += step) { ctx.moveTo(x0 + k, y0 + h); ctx.lineTo(x0 + k + h, y0); }
+      ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.fillStyle = s.color; ctx.globalAlpha = .9; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = `${Math.round(parseFloat(s.fontSize) * .3)}px ${s.fontFamily}`; ctx.fillText("缺", x0 + w / 2, y0 + h / 2); ctx.restore();
       return;
     }
     ctx.font = fontOf(el); ctx.fillStyle = s.color;

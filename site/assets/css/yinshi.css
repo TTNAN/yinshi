@@ -383,11 +383,14 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .poem-title .pc.mid { inline-size: calc(var(--ts) * .5); }
 .pc.mid .h { text-align: center; }
 
-/* 虚缺号 □（原文缺字）：与汉字同宽同高的空格子，淡墨虚线框，上面留出同样高的拼音位 */
-.mc { display: inline-flex; flex-direction: column-reverse; align-items: center; inline-size: calc(var(--cs) * var(--cell)); position: relative; cursor: help; }
+/* 虚缺号 □（原文缺字）：与汉字同宽同高的格子，上面留出同样高的拼音位。
+   和默写的空格（圆角虚线框、可以点）区分开：细实线方框 + 淡墨斜线 + 正中一个小「缺」字，不能点、没有悬停效果 */
+.mc { display: inline-flex; flex-direction: column-reverse; align-items: center; inline-size: calc(var(--cs) * var(--cell)); position: relative; cursor: default; user-select: none; }
 .mc .h { display: block; position: relative; font-family: var(--han); font-size: var(--cs); line-height: 1.12; color: var(--ink-3); }
-.mc .h::before { content: ""; position: absolute; inset: .1em .04em; border: 1px dashed currentColor; border-radius: 2px; opacity: .55;
-  background: repeating-linear-gradient(135deg, transparent 0 .16em, rgba(122,111,98,.07) .16em .2em); }
+.mc .h::before { content: ""; position: absolute; inset: .1em .04em; border: 1px solid currentColor; border-radius: 0; opacity: .3;
+  background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px .15em); }
+.mc .h::after { content: "缺"; position: absolute; inset: .1em .04em; display: flex; align-items: center; justify-content: center;
+  font-size: .3em; line-height: 1; letter-spacing: 0; color: var(--ink-3); opacity: .9; writing-mode: horizontal-tb; pointer-events: none; }
 .mc .rt { display: block; font-family: var(--py); font-size: var(--pys); line-height: 1.5; height: 1.5em; }
 
 /* 隐藏拼音：保留占位，版面不跳 */
@@ -470,8 +473,8 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
 .poem.m-g .poem-body .pc::after { background: none; border-color: transparent; }
 .poem.m-g .poem-body .pc .h { text-align: left; padding-left: .12em; line-height: calc(var(--cs) * 1.75); color: var(--ink-2); }
 .poem.m-g .poem-body ruby.c:hover { background: none; }
-/* 田字格里的缺字格：照常画格子，里面的虚线框缩小一圈 */
-.poem.m-g .poem-body .mc .h::before { inset: 16%; }
+/* 田字格里的缺字格：照常画格子，里面的斜线方框缩小一圈 */
+.poem.m-g .poem-body .mc .h::before, .poem.m-g .poem-body .mc .h::after { inset: 16%; }
 .poem.m-g .poem-body ruby.c:hover .h { background-color: var(--zhu-soft); }
 .poem.m-g.no-py .poem-body rt { visibility: visible; color: transparent; }
 
@@ -607,6 +610,8 @@ ruby.c.on { background: var(--zhu-soft); box-shadow: 0 0 0 1px rgba(181,53,42,.2
   background: rgba(236, 228, 211, .14); border-color: var(--ink-3); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(236, 228, 211, .18); }
 :root[data-theme="ye"] .toast { background: rgba(236, 228, 211, .94); color: #1d1a15; box-shadow: 0 8px 24px -10px rgba(0,0,0,.6); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.act { pointer-events: auto; }
+.toast-btn { margin-left: 10px; padding: 2px 12px; border: 1px solid currentColor; border-radius: 999px; background: none; color: inherit; font: inherit; cursor: pointer; }
 
 
 /* ---------- 手机底栏 ---------- */
@@ -794,7 +799,7 @@ ruby.c.say .h { color: var(--zhu); }
   ruby.c, ruby.c.on { background: none !important; box-shadow: none !important; }
   ruby.c rt { color: #444; }
   .mc .h { color: #999; }
-  .mc .h::before { background: none; }
+  .mc .h::before { opacity: .45; }
   .poem.m-v .poem-scroll { overflow: visible; width: 100%; max-width: 100%; }
   /* 长诗竖排打印：列排满一页宽就折到下面一栏，不会被纸边裁掉 */
   .poem.m-v .poem-body { flex: 1 1 0; min-width: 0; flex-wrap: wrap; align-content: flex-start; row-gap: calc(var(--cs) * .9); }
@@ -1019,7 +1024,8 @@ button.mv-poem:hover { border-color: var(--zhu); color: var(--zhu); }
   .pl-c { display: inline-flex; flex-direction: column; align-items: center; width: 1.7em; }
   .pl-c.pl-p { width: .8em; }
   .pl-c.pl-m b { color: transparent; position: relative; }
-  .pl-c.pl-m b::before { content: ""; position: absolute; inset: .14em .08em; border: 1px dashed #999; }
+  .pl-c.pl-m b::before { content: ""; position: absolute; inset: .14em .08em; border: 1px solid #bbb; background: repeating-linear-gradient(135deg, #ddd 0 1px, transparent 1px 4px); }
+  .pl-c.pl-m b::after { content: "缺"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .3em; color: #888; }
   .pl-c i { font-style: normal; font-family: var(--py); font-size: 8pt; line-height: 1.3; height: 1.3em; color: #555; white-space: nowrap; }
   .pl-c b { font-weight: 400; line-height: 1.25; }
   body.print-nopy .pl-c i { visibility: hidden; }

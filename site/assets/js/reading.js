@@ -1,9 +1,15 @@
 // 注音：pinyin-pro 出基础读音 → 课本修正 → 吟诵旧读 → 用户自定义
 const PP = window.pinyinPro;
 export const HAN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u{20000}-\u{2FA1F}]/u;
-// 虚缺号：古籍整理里原文缺字的占位（□ 最常见，也有 ■ ○ ◻ ▢ ☐ ⬜ 之类）。显示成一个空字格，不注音、不朗读、不挖空默写
-export const MISS = /[\u25A0-\u25A2\u25AB\u25CB\u25EF\u25FB\u25FC\u2610\u2B1A\u2B1C]/u;
+// 虚缺号：古籍整理里原文缺字的占位（□ 最常见，也有 ■ ▯ ○ ◯ ◻ ◽ ▢ ☐ ⎕ ⬚ ⬜ 之类，以及转码坏掉的 �）。
+// 显示成一个缺字格，不注音、不朗读、不挖空默写。〇（líng）是真字，不算。study.js、api.js 都用这里的定义
+export const MISS = /[\u25A0-\u25A2\u25AB\u25AF\u25CB\u25EF\u25FB-\u25FD\u2395\u2610\u2B1A\u2B1C\uFFFD]/u;
 export const MISS_G = new RegExp(MISS.source, "gu");
+// 占位符后面偶尔跟着变体选择符（□︎ / ⬜️），去掉它，免得多出一个看不见的格子
+const MISS_VS = new RegExp("(" + MISS.source + ")[\\uFE0E\\uFE0F]", "gu");
+export const cleanMiss = (s) => String(s).replace(MISS_VS, "$1");
+/** 正文里有没有原文缺字 */
+export const hasMiss = (lines) => (lines || []).some((l) => MISS.test(l));
 
 let FIX = { textbook: [], recite: [] };
 
@@ -44,6 +50,7 @@ function applyFixes(cells, line, list, set) {
  */
 export function annotate(lines, o) {
   return lines.map((line, li) => {
+    line = cleanMiss(line);
     const cells = baseReadings(line);
     cells.forEach((c) => { c.base = c.py; });
     if (o.textbook) applyFixes(cells, line, FIX.textbook, "textbook");

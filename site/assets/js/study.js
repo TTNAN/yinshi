@@ -1,12 +1,12 @@
 // 学习功能：朗读、点词看注释、平仄标注、默写、收藏与背诵打卡（间隔复习）、分类找诗、诗词接龙、相关诗、今日节令。
 // 全部在浏览器本地完成：收藏、背诵记录存在 localStorage，不需要账号。
 import * as store from "./store.js";
+import { MISS_G } from "./reading.js";
 
 const HAN = /[\u3400-\u9fff\uf900-\ufaff]/;
 const hanOnly = (s) => Array.from(String(s || "")).filter((c) => HAN.test(c)).join("");
 const PUNCT = /[，。！？；：、,.!?;:]/;
-// 虚缺号（原文缺字的 □ 等，与 reading.js 的 MISS 一致）：算作一个字位，但不读、不挖空
-const MISS_G = /[\u25A0-\u25A2\u25AB\u25CB\u25EF\u25FB\u25FC\u2610\u2B1A\u2B1C]/gu;
+// 虚缺号（原文缺字的 □ 等，MISS_G 来自 reading.js）：算作一个字位，但不读、不挖空
 export const DAY = 864e5;
 
 /* ---------------- 日期（按北京时间） ---------------- */

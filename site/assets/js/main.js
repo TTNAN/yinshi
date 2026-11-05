@@ -70,9 +70,30 @@ function applyDisplay() {
 let toastTimer;
 function toast(msg, ms = 2400) {
   const t = $("toast");
-  t.textContent = msg; t.classList.add("show");
+  t.textContent = msg; t.classList.remove("act"); t.classList.add("show");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), ms);
 }
+
+// 新版本提示：页面开着没刷新时，网站可能已经更新（旧脚本还在内存里，修好的问题看起来还在）。
+// 切回这个标签页或点「随机」时（最多每 10 分钟一次）不走缓存看一眼首页的版本号，变了就提示点一下刷新。
+const MY_V = new URL(import.meta.url).searchParams.get("v") || "";
+let updChecked = Date.now(), updShown = false;
+async function checkUpdate(force = false) {
+  if (!MY_V || updShown || (!force && Date.now() - updChecked < 10 * 60e3)) return;
+  updChecked = Date.now();
+  try {
+    const r = await fetch("./?vcheck=" + Date.now(), { cache: "no-store" });
+    const m = r.ok && (await r.text()).match(/assets\/js\/main\.js\?v=(\d+)/);
+    if (!m || m[1] === MY_V) return;
+    updShown = true;
+    const t = $("toast");
+    t.innerHTML = '吟诗有新版本 <button type="button" class="toast-btn">刷新</button>';
+    t.classList.add("show", "act"); clearTimeout(toastTimer);
+    t.querySelector("button").addEventListener("click", () => location.reload());
+    toastTimer = setTimeout(() => t.classList.remove("show", "act"), 15000);
+  } catch { /* 离线：不提示 */ }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
 
 /* ---------------- 今日一诗 ---------------- */
 function todayIndex() {
@@ -465,6 +486,7 @@ function authorSearch(name) {
 let busy = false;
 async function doRandom(params = null) {
   if (busy) return;
+  checkUpdate();
   busy = true;
   const f = state.filters;
   const p = params || { dynasty: f.dynasty, type: f.types, author: f.author };

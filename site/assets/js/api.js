@@ -9,6 +9,7 @@
 import * as store from "./store.js";
 import * as zh from "./zh.js";
 import * as cp from "./cp.js";
+import { hasMiss } from "./reading.js";
 
 const RAW = window.YINSHI_CONFIG || {};
 const PRIMARY = Object.assign({
@@ -69,6 +70,7 @@ export function activeSource() { return isDown(PRIMARY) && !isDown(FALLBACK) ? F
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+let noWait = false;
 // 节流：超出额度时排队等一会儿（最多 maxWaitMs），等不到才报「点得太快」
 async function slot(src) {
   for (;;) {
@@ -81,6 +83,7 @@ async function slot(src) {
       if (inWin.length >= l.max) wait = Math.max(wait, inWin[inWin.length - l.max] + l.windowMs - now + 20);
     }
     if (!wait) { list.push(now); return; }
+    if (noWait) throw new ApiError("throttle", "重抽先不排队");     // 随机重抽时不排队等额度：直接用已经抽到的那首
     if (wait > (src.maxWaitMs || 4000)) throw new ApiError("throttle", "点得有点快，稍等一下再试");
     await sleep(wait);
   }
@@ -206,8 +209,27 @@ async function pmSearch(q, page) {
 
 /* ---------- 对外接口 ---------- */
 
-/** 随机一首。params: { author, dynasty, type: ["诗","词","曲"], char } */
-export async function random(params = {}) {
+/**
+ * 随机一首。params: { author, dynasty, type: ["诗","词","曲"], char }
+ * 随机、飞花令不抽原文有缺字（□ 等虚缺号）的诗：抽到了就换一首再抽，最多 tries 次；
+ * 重抽不排队等额度（节流 / 冷却 / 出错就停），实在抽不到没缺字的，仍给第一首。搜索、链接打开的诗不受影响。
+ */
+export async function random(params = {}, { skipMiss = true, tries = 4 } = {}) {
+  let first = null;
+  for (let i = 0; i < tries; i++) {
+    let p;
+    noWait = i > 0;
+    try { p = await randomOnce(params); }
+    catch (e) { if (first) return first; throw e; }
+    finally { noWait = false; }
+    if (!p || !skipMiss || !hasMiss([p.title, ...(p.lines || [])])) return p;
+    first = first || p;
+    if (cooldownLeft() > 0) break;
+  }
+  return first;
+}
+
+async function randomOnce(params = {}) {
   if (params.char) {
     // 主诗库不按单字抽诗：从备用诗库抽
     return pmRandom({ char: params.char });
@@ -231,6 +253,7 @@ export async function random(params = {}) {
   } catch (e) {
     // 没有符合条件的诗 / 主诗库忙：主诗库目前缺唐诗、宋诗，先从全唐诗 / 全宋诗抽，再到备用诗库找
     if (e.status !== 404 && !canFallback(e)) throw e;
+    if (noWait && e.kind === "throttle") throw e;        // 重抽碰上节流：不换诗库，直接用已抽到的那首
     const c = await cpRandomAny(params).catch(() => null);
     if (c) return c;
     if (e.status === 404) { try { return await pmRandom(params); } catch { return null; } }
