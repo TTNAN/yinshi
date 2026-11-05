@@ -140,3 +140,9 @@ python3 tests/live_browser.py https://ttnan.github.io/yinshi/   # 真实浏览�
 ## 许可
 
 代码与原创内容：MIT © 2026 Caesar (TTNAN)，见 [LICENSE](LICENSE)。
+
+## 请我喝杯咖啡
+
+如果吟诗帮到了你或孩子，愿意的话可以请我喝杯咖啡 ☕ 微信扫码赞赏即可。
+
+<p><img src="docs/wechat-reward.png" width="220" alt="微信赞赏码"></p>
