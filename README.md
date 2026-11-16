@@ -4,7 +4,7 @@
 
 <p align="center">一张宣纸，一首诗，字上带拼音。给孩子读诗，给自己温诗。</p>
 
-<p align="center"><a href="https://yinshi.loc.cc/"><b>打开吟诗 → yinshi.loc.cc</b></a></p>
+<p align="center"><a href="https://ttnan.github.io/yinshi/"><b>打开吟诗 → ttnan.github.io/yinshi</b></a></p>
 
 <p align="center"><img src="docs/screenshots/desktop.webp" width="860" alt="宽屏：左侧作者生平，中间带拼音的诗笺，右侧诗意与赏析"></p>
 
@@ -134,7 +134,7 @@ python3 tools/build-xiaowei-fix.py ZCOOLXiaoWei-Regular.ttf  # 重新生成站�
 pip install playwright && python3 -m playwright install chromium
 python3 tests/e2e.py              # 无头浏览器验收（录好的接口数据，不联网）；YINSHI_PART=base / v3 / v4 / v5 / v6 / v7 / v8 / v8m / visual 分段（v8 / v8m：缺字格、长标题、繁体字形；v8m 还逐字检查 8 种字体 × 繁体没有黑方块 / 缺字框、整首同一字体）
 python3 tests/live_api.py         # 真实接口与 CDN：返回结构、跨域头
-python3 tests/live_browser.py https://yinshi.loc.cc/   # 真实浏览器直连线上站点
+python3 tests/live_browser.py https://ttnan.github.io/yinshi/   # 真实浏览器直连线上站点
 ```
 
 ## 许可
