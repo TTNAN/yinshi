@@ -3,7 +3,7 @@
 会访问网络。用法：python3 tests/live_api.py"""
 import json, sys, time, urllib.request, urllib.parse
 
-ORIGIN = "https://ttnan.github.io/yinshi"
+ORIGIN = "https://yinshi.loc.cc"
 def get(base, path, **p):
     qs = urllib.parse.urlencode(p, doseq=True)
     req = urllib.request.Request(f"{base}{path}" + (f"?{qs}" if qs else ""), headers={"User-Agent": "Mozilla/5.0 Chrome/124", "Origin": ORIGIN})
