@@ -19,6 +19,12 @@
 <td align="center"><img src="docs/screenshots/xiaohongshu.webp" width="200" alt="吟诗小红书版首页"></td>
 </tr></table>
 
+## 微信小程序版
+
+微信里也能用：「吟诗拼音古诗」小程序，同样收录统编课本古诗词 237 首，带拼音，横排竖排、遮字背、默写打卡、分享卡，不用登录，没网也能打开。
+
+<p align="center"><img src="docs/wechat-miniprogram-qr.png" width="200" alt="微信扫码打开吟诗拼音古诗小程序"><br>用微信扫码打开</p>
+
 ## 功能
 
 ### 阅读与拼音
